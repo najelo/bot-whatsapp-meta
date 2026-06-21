@@ -7,7 +7,8 @@ app = FastAPI()
 
 # 1. Configurar Gemini
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel('gemini-1.5-flash')
+# Cambia tu línea actual por esta:
+model = genai.GenerativeModel('models/gemini-1.5-flash')
 
 # 2. Tu Webhook para Meta
 @app.post("/webhook")
