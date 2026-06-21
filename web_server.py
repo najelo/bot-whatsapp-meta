@@ -11,23 +11,11 @@ genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 model = genai.GenerativeModel('gemini-3.5-flash') # Verifica que la versión sea válida
 
 # --- 1. Verificación del Webhook (Necesario para Meta) ---
-@app.get("/webhook")
-async def verify_webhook(request: Request):
-    mode = request.query_params.get("hub.mode")
-    token = request.query_params.get("hub.verify_token")
-    challenge = request.query_params.get("hub.challenge")
-    
-    if mode == "subscribe" and token == os.getenv("VERIFY_TOKEN"):
-        return int(challenge)
-    return {"error": "Invalid token"}, 403
-
-# --- 2. Recepción de mensajes ---
 @app.post("/webhook")
 async def handle_message(request: Request):
     data = await request.json()
     
     try:
-        # Validación de que el mensaje existe
         entry = data.get('entry', [])[0]
         changes = entry.get('changes', [])[0]
         value = changes.get('value', {})
@@ -35,14 +23,21 @@ async def handle_message(request: Request):
         if 'messages' in value:
             message_data = value['messages'][0]
             phone_number = message_data['from']
-            text = message_data['text']['body']
             
-            # Generar respuesta con Gemini
-            response = model.generate_content(text)
-            respuesta_bot = response.text
+            # --- NUEVA LÓGICA: Diferenciar texto de imagen ---
+            if 'text' in message_data:
+                # Caso mensaje de texto
+                user_text = message_data['text']['body']
+                response = model.generate_content(user_text)
+                enviar_respuesta_whatsapp(phone_number, response.text)
             
-            # Llamar a la función correctamente escrita
-            send_whatsapp_message(phone_number, respuesta_bot)
+            elif 'image' in message_data:
+                # Caso mensaje de imagen
+                # Aquí por ahora ignoramos la imagen o enviamos un mensaje de aviso
+                enviar_respuesta_whatsapp(phone_number, "He recibido tu imagen, pero aún no puedo analizarla. ¡Envíame un texto!")
+            
+            else:
+                print("Tipo de mensaje no soportado")
         
     except Exception as e:
         print(f"Error procesando: {e}")
