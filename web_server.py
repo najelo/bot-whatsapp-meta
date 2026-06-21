@@ -32,7 +32,8 @@ async def handle_message(request: Request):
         
     return {"status": "ok"}
 
-def enviar_respuesta_whatsapp(to, text):
+# Modifica tu función de envío así para ver qué responde Meta:
+def send_whatsapp_message(to, text):
     url = f"https://graph.facebook.com/v25.0/{os.getenv('PHONE_NUMBER_ID')}/messages"
     headers = {
         "Authorization": f"Bearer {os.getenv('ACCESS_TOKEN')}",
@@ -43,4 +44,7 @@ def enviar_respuesta_whatsapp(to, text):
         "to": to,
         "text": {"body": text}
     }
-    requests.post(url, headers=headers, json=payload)
+    response = requests.post(url, headers=headers, json=payload)
+    # ESTO ES LO QUE NECESITAMOS VER EN LOS LOGS:
+    print(f"DEBUG: Meta respondió con código {response.status_code}")
+    print(f"DEBUG: Cuerpo de respuesta de Meta: {response.text}")
