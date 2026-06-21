@@ -13,7 +13,7 @@ app = FastAPI()
 
 # Asegúrate de que el modelo sea el que tienes contratado/accedido
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
-model = genai.GenerativeModel('gemini-1.5-flash')
+model = genai.GenerativeModel('gemini-3.5-flash')
 supabase = create_client(os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_KEY"))
 
 # 2. Funciones de Meta
