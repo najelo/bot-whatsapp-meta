@@ -55,19 +55,26 @@ async def verify_webhook(request: Request):
 @app.post("/webhook")
 async def handle_message(request: Request):
     data = await request.json()
+    # Log para ver qué llega exactamente de Meta
+    print(f"DEBUG: Datos recibidos: {data}") 
+    
     try:
         value = data['entry'][0]['changes'][0]['value']
         if 'messages' in value:
             msg = value['messages'][0]
             phone = msg['from']
+            print(f"DEBUG: Mensaje recibido de {phone}")
 
-            # Procesamiento de TEXTO
+            # CASO TEXTO
             if 'text' in msg:
                 user_text = msg['text']['body']
+                print(f"DEBUG: Procesando texto: {user_text}")
+                
                 response = model.generate_content(user_text)
-                send_whatsapp_message(phone, response.text)
-                supabase.table("mensajes").insert({"phone": phone, "texto": user_text, "respuesta": response.text}).execute()
-
+                txt_resp = response.text
+                
+                send_whatsapp_message(phone, txt_resp)
+                supabase.table("mensajes").insert({"phone": phone, "texto": user_text, "respuesta": txt_resp}).execute()
             # Procesamiento de IMAGEN
             elif 'image' in msg:
                 media_id = msg['image']['id']
