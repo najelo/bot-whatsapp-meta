@@ -18,21 +18,23 @@ def obtener_datos_verificacion():
     return res.data[0] if res.data else None
 
 def responder_pregunta_usuario(pregunta):
-    # 1. Obtenemos toda la información oficial de la BD
+    # 1. Buscamos la info del negocio
     res = supabase.table("informacion_negocio").select("contenido").execute()
-    datos_oficiales = str(res.data)
+    datos_oficiales = "\n".join([r['contenido'] for r in res.data]) if res.data else ""
     
-    # 2. Instrucción para Gemini
+    # 2. Si no hay ni FAQ ni Información, damos una respuesta estándar clara
+    if not datos_oficiales:
+        return "Lo siento, en este momento no cuento con información detallada para responder tu consulta. Por favor, contacta directamente con un administrador."
+    
+    # 3. Consulta a la IA con instrucción de no alucinar
     prompt = f"""
     Información oficial: {datos_oficiales}
     Pregunta del usuario: {pregunta}
     
-    Reglas:
+    Reglas estrictas:
     - Responde basándote ÚNICAMENTE en la información oficial.
-    - Si la respuesta NO está ahí, responde: "Lo siento, no dispongo de esa información. Por favor, contacta con un administrador."
-    - Sé breve y profesional.
+    - Si la respuesta NO está en la información oficial, responde EXACTAMENTE: 
+      "Lo siento, no dispongo de esa información en mis registros. Por favor, contacta con un administrador."
     """
     return model.generate_content(prompt).text
-
-def save_to_db(phone, response, text=None, url_path=None):
     supabase.table("mensajes").insert({"phone": phone, "texto": text, "url_archivo": url_path, "respuesta": response}).execute()
