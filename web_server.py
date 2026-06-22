@@ -24,27 +24,20 @@ async def handle_message(request: Request):
             if 'text' not in msg and 'image' not in msg:
                 return {"status": "ok"}
             
-            # Lógica para Texto
             if 'text' in msg:
                 texto = msg['text']['body']
-                print(f"DEBUG: Procesando mensaje de {phone}: {texto}")
-                
-                # Ahora 'respuestas' es una lista de textos
                 respuestas = ai_utils.buscar_respuesta_automatica(texto)
                 
                 if respuestas:
-                    try:
-                        for resp in respuestas:
-                            whatsapp_utils.send_whatsapp_message(phone, resp)
-                            ai_utils.save_to_db(phone, resp, text=texto)
-                    except Exception as e:
-                        print(f"DEBUG: ¡ERROR al enviar mensaje de WhatsApp!: {e}")
+                    # Enviamos cada respuesta encontrada de forma secuencial
+                    for resp in respuestas:
+                        whatsapp_utils.send_whatsapp_message(phone, resp)
+                        ai_utils.save_to_db(phone, resp, text=texto)
                 else:
                     msg_default = "Lo siento, no tengo esa información. Contacta a un administrador."
                     whatsapp_utils.send_whatsapp_message(phone, msg_default)
                     ai_utils.save_to_db(phone, msg_default, text=texto)
             
-            # Lógica para Imagen
             elif 'image' in msg:
                 img_bytes = whatsapp_utils.get_image_from_meta(msg['image']['id'])
                 cfg = ai_utils.obtener_datos_verificacion()
