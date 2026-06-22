@@ -11,9 +11,25 @@ model = genai.GenerativeModel('gemini-3.5-flash')
 supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
 
 def normalizar_texto(texto):
-    """Elimina tildes y convierte a minúsculas para comparaciones precisas."""
     texto = texto.lower()
     return unicodedata.normalize('NFD', texto).encode('ascii', 'ignore').decode('utf-8')
+
+def buscar_respuesta_automatica(texto_usuario):
+    """Consulta la base de datos relacional (palabras_clave -> respuestas)."""
+    texto_limpio = normalizar_texto(texto_usuario)
+    try:
+        # Buscamos todas las reglas
+        reglas = supabase.table("palabras_clave").select("keyword, respuesta_id").execute().data
+        
+        for r in reglas:
+            if normalizar_texto(r['keyword']) in texto_limpio:
+                # Obtenemos la respuesta asociada
+                resp = supabase.table("respuestas").select("contenido").eq("id", r['respuesta_id']).execute().data
+                if resp:
+                    return resp[0]['contenido']
+    except Exception as e:
+        print(f"Error en búsqueda: {e}")
+    return None
 
 def verificar_pago_movil(img_bytes, cedula, telefono):
     """Audita el comprobante de pago."""
@@ -22,28 +38,10 @@ def verificar_pago_movil(img_bytes, cedula, telefono):
     return model.generate_content([prompt, img]).text
 
 def obtener_datos_verificacion():
-    """Trae los datos de pago activos."""
     res = supabase.table("configuracion_pago").select("*").eq("activo", True).execute()
     return res.data[0] if res.data else {"cedula_esperada": "0", "telefono_esperado": "0"}
 
-def buscar_respuesta_automatica(texto_usuario):
-    """Consulta la tabla 'respuestas_automaticas' ignorando tildes y mayúsculas."""
-    texto_limpio = normalizar_texto(texto_usuario)
-    try:
-        reglas = supabase.table("respuestas_automaticas").select("*").execute().data
-        for r in reglas:
-            if normalizar_texto(r['palabra_clave']) in texto_limpio:
-                return r['respuesta_texto']
-    except Exception as e:
-        print(f"Error buscando FAQ: {e}")
-    return None
-
-def responder_pregunta_usuario(pregunta):
-    """Función de seguridad: no realiza consultas externas."""
-    return "Lo siento, no dispongo de esa información. Por favor, contacta con un administrador."
-
 def save_to_db(phone, response, text=None, url_path=None):
-    """Guarda el historial."""
     try:
         supabase.table("mensajes").insert({
             "phone": phone, 
