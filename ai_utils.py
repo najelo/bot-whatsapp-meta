@@ -17,19 +17,22 @@ def normalizar_texto(texto):
 def buscar_respuesta_automatica(texto_usuario):
     texto_limpio = normalizar_texto(texto_usuario)
     try:
-        # 1. Buscamos en la tabla 'clientes'
-        reglas = supabase.table("clientes").select("palabra_clave, respuesta_id").execute().data
+        # Traemos todo para depurar
+        data = supabase.table("clientes").select("palabra_clave, respuesta_id").execute().data
+        print(f"DEBUG: Texto recibido: '{texto_limpio}'")
+        print(f"DEBUG: Datos en tabla clientes: {data}")
         
-        for r in reglas:
-            if normalizar_texto(r['palabra_clave']) in texto_limpio:
-                # 2. Traemos la respuesta de la tabla 'respuestas'
+        for r in data:
+            kw = normalizar_texto(r['palabra_clave'])
+            if kw in texto_limpio:
                 resp = supabase.table("respuestas").select("contenido").eq("id", r['respuesta_id']).execute().data
                 if resp:
                     return resp[0]['contenido']
+        
+        print("DEBUG: No se encontró ninguna coincidencia en la tabla.")
     except Exception as e:
         print(f"Error en BD: {e}")
     return None
-
 def verificar_pago_movil(img_bytes, cedula, telefono):
     """Audita el comprobante de pago."""
     img = PIL.Image.open(io.BytesIO(img_bytes))
