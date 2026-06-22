@@ -17,19 +17,18 @@ def normalizar_texto(texto):
 def buscar_respuesta_automatica(texto_usuario):
     texto_limpio = normalizar_texto(texto_usuario)
     try:
-        # Traemos todo para depurar
-        data = supabase.table("clientes").select("palabra_clave, respuesta_id").execute().data
-        print(f"DEBUG: Texto recibido: '{texto_limpio}'")
-        print(f"DEBUG: Datos en tabla clientes: {data}")
+        reglas = supabase.table("clientes").select("palabra_clave, respuesta_id").execute().data
         
-        for r in data:
+        for r in reglas:
             kw = normalizar_texto(r['palabra_clave'])
-            if kw in texto_limpio:
+            # CAMBIO: Usamos comparación exacta (==) en lugar de "in"
+            if kw == texto_limpio:
+                print(f"DEBUG: ¡Coincidencia exacta encontrada para: {kw}!")
                 resp = supabase.table("respuestas").select("contenido").eq("id", r['respuesta_id']).execute().data
                 if resp:
                     return resp[0]['contenido']
         
-        print("DEBUG: No se encontró ninguna coincidencia en la tabla.")
+        print(f"DEBUG: Ninguna palabra clave coincide exactamente con: {texto_limpio}")
     except Exception as e:
         print(f"Error en BD: {e}")
     return None
