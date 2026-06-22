@@ -13,7 +13,7 @@ async def handle_message(request: Request):
         msg = value['messages'][0]
         phone = msg['from']
         
-        # LÓGICA DE PAGO
+        # Lógica de Imagen (Verificación)
         if 'image' in msg:
             cfg = ai_utils.obtener_datos_verificacion()
             img_bytes = whatsapp_utils.get_image_from_meta(msg['image']['id'])
@@ -21,16 +21,13 @@ async def handle_message(request: Request):
             whatsapp_utils.send_whatsapp_message(phone, resp)
             ai_utils.save_to_db(phone, resp, url_path=msg['image']['id'])
             
-        # LÓGICA DE CONSULTA (IA + BD)
-     elif 'text' in msg:
+        # Lógica de Texto (FAQ o IA)
+        elif 'text' in msg:
             texto = msg['text']['body']
-            # Primero intentamos FAQ (Respuesta inmediata)
             regla = ai_utils.buscar_respuesta_automatica(texto)
-            
             if regla:
                 resp = regla
             else:
-                # Si no es FAQ, vamos a la IA con el mensaje de "no encontrado" configurado arriba
                 resp = ai_utils.responder_pregunta_usuario(texto)
                 
             whatsapp_utils.send_whatsapp_message(phone, resp)
@@ -38,5 +35,4 @@ async def handle_message(request: Request):
             
     except Exception as e:
         print(f"Error: {e}")
-        
     return {"status": "ok"}
