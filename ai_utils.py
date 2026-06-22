@@ -23,20 +23,23 @@ def normalizar_texto(texto):
     return texto.strip()
 
 def buscar_respuesta_automatica(texto_usuario):
+    # El texto del usuario llega limpio (sin ? ! . tildes)
     texto_limpio = normalizar_texto(texto_usuario)
+    
     try:
         reglas = supabase.table("clientes").select("palabra_clave, respuesta_id").execute().data
         
         for r in reglas:
+            # Normalizamos también la palabra clave de la base de datos
             kw = normalizar_texto(r['palabra_clave'])
-            # CAMBIO: Usamos comparación exacta (==) en lugar de "in"
-            if kw == texto_limpio:
-                print(f"DEBUG: ¡Coincidencia exacta encontrada para: {kw}!")
+            
+            # Ahora, si el usuario escribe: "¿Qué horario tienen?"
+            # texto_limpio será: "que horario tienen"
+            # y el código encontrará "horario" dentro de esa frase.
+            if kw in texto_limpio:
                 resp = supabase.table("respuestas").select("contenido").eq("id", r['respuesta_id']).execute().data
                 if resp:
                     return resp[0]['contenido']
-        
-        print(f"DEBUG: Ninguna palabra clave coincide exactamente con: {texto_limpio}")
     except Exception as e:
         print(f"Error en BD: {e}")
     return None
