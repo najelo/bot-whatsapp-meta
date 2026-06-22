@@ -28,8 +28,12 @@ async def handle_message(request: Request):
                 
                 if resp:
                     print(f"DEBUG: Respuesta encontrada: {resp}")
-                    whatsapp_utils.send_whatsapp_message(phone, resp)
-                    ai_utils.save_to_db(phone, resp, text=texto)
+                    try:
+                        whatsapp_utils.send_whatsapp_message(phone, resp)
+                        print("DEBUG: Mensaje enviado exitosamente.")
+                        ai_utils.save_to_db(phone, resp, text=texto)
+                    except Exception as e:
+                        print(f"DEBUG: ¡ERROR al enviar mensaje de WhatsApp!: {e}")
                 else:
                     print("DEBUG: No se encontró respuesta.")
                     whatsapp_utils.send_whatsapp_message(phone, "Lo siento, no tengo esa información. Contacta a un administrador.")
