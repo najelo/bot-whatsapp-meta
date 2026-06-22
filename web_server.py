@@ -22,9 +22,17 @@ async def handle_message(request: Request):
             ai_utils.save_to_db(phone, resp, url_path=msg['image']['id'])
             
         # LÓGICA DE CONSULTA (IA + BD)
-        elif 'text' in msg:
+     elif 'text' in msg:
             texto = msg['text']['body']
-            resp = ai_utils.responder_pregunta_usuario(texto)
+            # Primero intentamos FAQ (Respuesta inmediata)
+            regla = ai_utils.buscar_respuesta_automatica(texto)
+            
+            if regla:
+                resp = regla
+            else:
+                # Si no es FAQ, vamos a la IA con el mensaje de "no encontrado" configurado arriba
+                resp = ai_utils.responder_pregunta_usuario(texto)
+                
             whatsapp_utils.send_whatsapp_message(phone, resp)
             ai_utils.save_to_db(phone, resp, text=texto)
             
