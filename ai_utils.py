@@ -7,7 +7,7 @@ from supabase import create_client
 
 # Configuración
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel('gemini-3.5-flash')
+model = genai.GenerativeModel('gemini-1.5-flash')
 supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
 
 def normalizar_texto(texto):
@@ -40,23 +40,11 @@ def buscar_respuesta_automatica(texto_usuario):
     return None
 
 def responder_pregunta_usuario(pregunta):
-    """Consulta la 'informacion_negocio' mediante IA."""
-    try:
-        res = supabase.table("informacion_negocio").select("contenido").execute()
-        datos = "\n".join([r['contenido'] for r in res.data]) if res.data else "Sin datos."
-        
-        prompt = f"""
-        Información oficial: {datos}
-        Pregunta del usuario: {pregunta}
-        
-        Reglas estrictas:
-        - Si la respuesta está en la información oficial, úsala.
-        - Si la respuesta NO está ahí, responde: "Lo siento, no dispongo de esa información. Por favor, contacta con un administrador."
-        """
-        return model.generate_content(prompt).text
-    except Exception as e:
-        print(f"Error en IA: {e}")
-        return "Lo siento, hubo un error técnico. Contacta con un administrador."
+    """
+    YA NO CONSULTA 'informacion_negocio'. 
+    Si llega aquí es porque no encontró la respuesta en las FAQ.
+    """
+    return "Lo siento, no dispongo de esa información. Por favor, contacta con un administrador."
 
 def save_to_db(phone, response, text=None, url_path=None):
     """Guarda el historial."""
