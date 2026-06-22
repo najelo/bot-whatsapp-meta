@@ -18,15 +18,21 @@ async def handle_message(request: Request):
             phone = msg.get('from')
             
             # Lógica de Texto: Busca solo en tu tabla
-            if 'text' in msg:
+           if 'text' in msg:
                 texto = msg['text']['body']
+                print(f"DEBUG: Buscando respuesta para: {texto}")
+                
                 resp = ai_utils.buscar_respuesta_automatica(texto)
                 
-                if not resp:
-                    resp = "Lo siento, no tengo esa información. Contacta a un administrador."
-                
-                whatsapp_utils.send_whatsapp_message(phone, resp)
-                ai_utils.save_to_db(phone, resp, text=texto)
+                if resp:
+                    print(f"DEBUG: Respuesta encontrada: {resp}")
+                    whatsapp_utils.send_whatsapp_message(phone, resp)
+                    ai_utils.save_to_db(phone, resp, text=texto)
+                else:
+                    print("DEBUG: No se encontró respuesta, enviando mensaje por defecto.")
+                    # Opcional: puedes quitar este mensaje si no quieres que responda nada si no encuentra la palabra
+                    whatsapp_utils.send_whatsapp_message(phone, "Lo siento, no tengo esa información. Contacta a un administrador.")
+                    ai_utils.save_to_db(phone, "Lo siento, no tengo esa información.", text=texto)
             
             # Lógica de Imagen: Verifica pagos
             elif 'image' in msg:
