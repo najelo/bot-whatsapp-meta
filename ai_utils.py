@@ -7,14 +7,13 @@ from supabase import create_client
 
 # Configuración
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel('gemini-3.5-flash')
+model = genai.GenerativeModel('gemini-1.5-flash')
 supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
 
 def normalizar_texto(texto):
     """Elimina tildes y convierte a minúsculas para comparaciones precisas."""
     texto = texto.lower()
-    texto = unicodedata.normalize('NFD', texto).encode('ascii', 'ignore').decode('utf-8')
-    return texto
+    return unicodedata.normalize('NFD', texto).encode('ascii', 'ignore').decode('utf-8')
 
 def verificar_pago_movil(img_bytes, cedula, telefono):
     """Audita el comprobante de pago."""
@@ -40,10 +39,7 @@ def buscar_respuesta_automatica(texto_usuario):
     return None
 
 def responder_pregunta_usuario(pregunta):
-    """
-    YA NO CONSULTA 'informacion_negocio'. 
-    Si llega aquí es porque no encontró la respuesta en las FAQ.
-    """
+    """Función de seguridad: no realiza consultas externas."""
     return "Lo siento, no dispongo de esa información. Por favor, contacta con un administrador."
 
 def save_to_db(phone, response, text=None, url_path=None):
