@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request
-import ai_utils, whatsapp_utils
+import ai_utils
+import whatsapp_utils
 
 app = FastAPI()
 
@@ -9,7 +10,8 @@ async def handle_message(request: Request):
     
     try:
         entry = data.get('entry', [])
-        if not entry: return {"status": "ok"}
+        if not entry: 
+            return {"status": "ok"}
         
         value = entry[0].get('changes', [{}])[0].get('value', {})
         
@@ -17,8 +19,8 @@ async def handle_message(request: Request):
             msg = value['messages'][0]
             phone = msg.get('from')
             
-            # Lógica de Texto: Busca solo en tu tabla
-           if 'text' in msg:
+            # Lógica de Texto
+            if 'text' in msg:
                 texto = msg['text']['body']
                 print(f"DEBUG: Buscando respuesta para: {texto}")
                 
@@ -29,12 +31,11 @@ async def handle_message(request: Request):
                     whatsapp_utils.send_whatsapp_message(phone, resp)
                     ai_utils.save_to_db(phone, resp, text=texto)
                 else:
-                    print("DEBUG: No se encontró respuesta, enviando mensaje por defecto.")
-                    # Opcional: puedes quitar este mensaje si no quieres que responda nada si no encuentra la palabra
+                    print("DEBUG: No se encontró respuesta.")
                     whatsapp_utils.send_whatsapp_message(phone, "Lo siento, no tengo esa información. Contacta a un administrador.")
                     ai_utils.save_to_db(phone, "Lo siento, no tengo esa información.", text=texto)
             
-            # Lógica de Imagen: Verifica pagos
+            # Lógica de Imagen
             elif 'image' in msg:
                 img_bytes = whatsapp_utils.get_image_from_meta(msg['image']['id'])
                 cfg = ai_utils.obtener_datos_verificacion()
