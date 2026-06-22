@@ -6,6 +6,8 @@ app = FastAPI()
 @app.post("/webhook")
 async def handle_message(request: Request):
     data = await request.json()
+    print(f"DATOS RECIBIDOS: {data}") # <-- AÑADE ESTO
+    # ... resto del código ...
     try:
         value = data['entry'][0]['changes'][0]['value']
         if 'messages' not in value: return {"status": "ok"}
