@@ -10,9 +10,17 @@ genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 model = genai.GenerativeModel('gemini-3.5-flash')
 supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
 
+import re # Asegúrate de importar esto al principio
+
 def normalizar_texto(texto):
+    # 1. Pasar a minúsculas
     texto = texto.lower()
-    return unicodedata.normalize('NFD', texto).encode('ascii', 'ignore').decode('utf-8')
+    # 2. Eliminar tildes
+    texto = unicodedata.normalize('NFD', texto).encode('ascii', 'ignore').decode('utf-8')
+    # 3. Eliminar todo lo que NO sea letra o número (aquí eliminamos los signos de interrogación, exclamación, puntos, etc.)
+    texto = re.sub(r'[^a-z0-9\s]', '', texto)
+    # 4. Eliminar espacios extra al inicio o final
+    return texto.strip()
 
 def buscar_respuesta_automatica(texto_usuario):
     texto_limpio = normalizar_texto(texto_usuario)
