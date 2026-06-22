@@ -14,12 +14,12 @@ supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
 def normalizar_texto(texto):
     texto = texto.lower()
     texto = unicodedata.normalize('NFD', texto).encode('ascii', 'ignore').decode('utf-8')
-    texto = re.sub(r'[^a-z0-9\s]', '', texto)
+    # Eliminamos solo caracteres especiales que puedan interferir, pero mantenemos la estructura
     return texto.strip()
 
 def buscar_respuesta_automatica(texto_usuario):
     texto_limpio = normalizar_texto(texto_usuario)
-    lista_respuestas = [] # Aquí acumularemos todas las respuestas
+    lista_respuestas = [] 
     
     try:
         reglas = supabase.table("clientes").select("palabra_clave, respuesta_id").execute().data
@@ -33,7 +33,8 @@ def buscar_respuesta_automatica(texto_usuario):
     except Exception as e:
         print(f"Error en BD: {e}")
     
-    return lista_respuestas # Devolvemos la lista completa (puede estar vacía o con varios mensajes)
+    # Retornamos la lista completa (si no encuentra nada, será una lista vacía [])
+    return lista_respuestas
 
 def verificar_pago_movil(img_bytes, cedula, telefono):
     img = PIL.Image.open(io.BytesIO(img_bytes))
