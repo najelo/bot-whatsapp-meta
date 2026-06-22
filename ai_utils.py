@@ -15,20 +15,19 @@ def normalizar_texto(texto):
     return unicodedata.normalize('NFD', texto).encode('ascii', 'ignore').decode('utf-8')
 
 def buscar_respuesta_automatica(texto_usuario):
-    """Consulta la base de datos relacional (palabras_clave -> respuestas)."""
     texto_limpio = normalizar_texto(texto_usuario)
     try:
-        # Buscamos todas las reglas
-        reglas = supabase.table("palabras_clave").select("keyword, respuesta_id").execute().data
+        # 1. Buscamos en la tabla 'clientes'
+        reglas = supabase.table("clientes").select("palabra_clave, respuesta_id").execute().data
         
         for r in reglas:
-            if normalizar_texto(r['keyword']) in texto_limpio:
-                # Obtenemos la respuesta asociada
+            if normalizar_texto(r['palabra_clave']) in texto_limpio:
+                # 2. Traemos la respuesta de la tabla 'respuestas'
                 resp = supabase.table("respuestas").select("contenido").eq("id", r['respuesta_id']).execute().data
                 if resp:
                     return resp[0]['contenido']
     except Exception as e:
-        print(f"Error en búsqueda: {e}")
+        print(f"Error en BD: {e}")
     return None
 
 def verificar_pago_movil(img_bytes, cedula, telefono):
