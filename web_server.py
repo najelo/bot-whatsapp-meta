@@ -15,12 +15,18 @@ async def handle_message(request: Request):
             phone = msg.get('from')
             
             # 1. DETECCIÓN DE REACCIONES
+    # 1. DETECCIÓN DE REACCIONES (Mejorada y robusta)
             if 'reaction' in msg:
-                emoji = msg['reaction']['emoji']
-                if emoji in ["💎", "💖"]:
-                    ai_utils.set_user_state(phone, "ESPERANDO_CAPTURE")
-                    whatsapp_utils.send_whatsapp_message(phone, "¡Gracias por el apoyo! Envía ahora el capture del pago para verificarlo.")
-                    return {"status": "ok"}
+                # Usamos .get() para evitar el KeyError
+                reaction_data = msg.get('reaction', {})
+                emoji = reaction_data.get('emoji')
+                
+                # Verificamos que realmente exista un emoji antes de procesar
+                if emoji:
+                    if emoji in ["💎", "💖"]:
+                        ai_utils.set_user_state(phone, "ESPERANDO_CAPTURE")
+                        whatsapp_utils.send_whatsapp_message(phone, "¡Gracias por el apoyo! Envía ahora el capture del pago para verificarlo.")
+                        return {"status": "ok"}
 
             # 2. PROCESAMIENTO DE MENSAJES (Texto o Imagen)
             if 'text' in msg:
