@@ -12,7 +12,6 @@ def send_whatsapp_message(to, text):
     payload = {"messaging_product": "whatsapp", "to": to, "text": {"body": text}}
     requests.post(url, headers=headers, json=payload)
 
-# --- NUEVA FUNCIÓN PARA PDF ---
 def send_whatsapp_document(to, pdf_url, caption="Aquí tienes tu archivo"):
     url = f"https://graph.facebook.com/v25.0/{os.getenv('PHONE_NUMBER_ID')}/messages"
     headers = {
@@ -26,7 +25,7 @@ def send_whatsapp_document(to, pdf_url, caption="Aquí tienes tu archivo"):
         "document": {
             "link": pdf_url,
             "caption": caption,
-            "filename": "documento.pdf"
+            "filename": "recetario.pdf"
         }
     }
     requests.post(url, headers=headers, json=payload)
