@@ -18,7 +18,7 @@ async def handle_message(request: Request):
         # 1. Gestión de Reacciones
         if 'reaction' in msg:
             emoji = msg['reaction'].get('emoji')
-            if emoji in ["💎", "⭐", "🚀"]:
+            if emoji in ["💖", "⭐", "💎"]:
                 ai_utils.set_user_state(phone, f"ESPERANDO_CAPTURE_{emoji}")
                 whatsapp_utils.send_whatsapp_message(phone, f"Has elegido {emoji}. Envía el capture para verificar.")
                 return {"status": "ok"}
