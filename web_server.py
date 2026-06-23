@@ -9,58 +9,43 @@ app = FastAPI()
 async def handle_message(request: Request):
     data = await request.json()
     try:
-        # 1. Extraer la estructura de Meta (se mantiene igual)
-        entry = data.get('entry', [])
-        if not entry: return {"status": "ok"}
-        value = entry[0].get('changes', [{}])[0].get('value', {})
+        value = data.get('entry', [{}])[0].get('changes', [{}])[0].get('value', {})
+        if 'messages' not in value: return {"status": "ok"}
         
-        if 'messages' in value:
-            msg = value['messages'][0]
-            phone = msg.get('from')
-            
-            # 2. NUEVA LÓGICA DE REACCIONES (Añadida sin tocar lo demás)
-            if 'reaction' in msg:
-                reaction_data = msg.get('reaction', {})
-                emoji = reaction_data.get('emoji')
-                if emoji in ["💎", "💖"]:
-                    ai_utils.set_user_state(phone, "ESPERANDO_CAPTURE")
-                    whatsapp_utils.send_whatsapp_message(phone, "¡Gracias por el apoyo! Envía ahora el capture del pago para verificarlo.")
-                    return {"status": "ok"}
+        msg = value['messages'][0]
+        phone = msg.get('from')
 
-            # 3. LÓGICA ORIGINAL DE TEXTO (Restaurada al 100%)
-            if 'text' in msg:
-                texto = msg['text']['body']
-                lista_respuestas = ai_utils.buscar_todas_las_respuestas(texto)
+        # 1. Gestión de Reacciones
+        if 'reaction' in msg:
+            emoji = msg['reaction'].get('emoji')
+            if emoji in ["💎", "⭐", "🚀"]:
+                ai_utils.set_user_state(phone, f"ESPERANDO_CAPTURE_{emoji}")
+                whatsapp_utils.send_whatsapp_message(phone, f"Has elegido {emoji}. Envía el capture para verificar.")
+                return {"status": "ok"}
+
+        # 2. Gestión de Texto
+        if 'text' in msg:
+            respuestas = ai_utils.buscar_todas_las_respuestas(msg['text']['body'])
+            for resp in respuestas:
+                whatsapp_utils.send_whatsapp_message(phone, resp)
+                time.sleep(1)
+
+        # 3. Gestión de Imágenes (Auditoría con Monto Dinámico)
+        elif 'image' in msg:
+            estado = ai_utils.get_user_state(phone)
+            if estado.startswith("ESPERANDO_CAPTURE_"):
+                emoji_usado = estado.split("_")[2]
+                monto = ai_utils.obtener_monto_por_emoji(emoji_usado)
                 
-                if lista_respuestas:
-                    for resp in lista_respuestas:
-                        try:
-                            # Si es un link de recetarios, lo enviamos como documento
-                            if resp.startswith("http") and "recetarios-helado" in resp:
-                                whatsapp_utils.send_whatsapp_document(phone, resp, caption="Aquí tienes tu recetario")
-                            else:
-                                whatsapp_utils.send_whatsapp_message(phone, resp)
-                            
-                            time.sleep(1.5)
-                            ai_utils.save_to_db(phone, resp, text=texto)
-                        except Exception as e:
-                            print(f"Error al enviar: {e}")
-                else:
-                    whatsapp_utils.send_whatsapp_message(phone, "Lo siento, no encontré esa información.")
-            
-            # 4. LÓGICA ORIGINAL DE AUDITORÍA DE PAGOS (Restaurada)
-            elif 'image' in msg:
-                estado = ai_utils.get_user_state(phone)
-                if estado == "ESPERANDO_CAPTURE":
-                    img_bytes = whatsapp_utils.get_image_from_meta(msg['image']['id'])
-                    cfg = ai_utils.obtener_datos_verificacion()
-                    resp = ai_utils.verificar_pago_movil(img_bytes, cfg['cedula_esperada'], cfg['telefono_esperado'])
-                    whatsapp_utils.send_whatsapp_message(phone, resp)
-                    ai_utils.save_to_db(phone, resp, url_path=msg['image']['id'])
-                    ai_utils.set_user_state(phone, "IDLE") # Resetear estado
-                else:
-                    whatsapp_utils.send_whatsapp_message(phone, "Por favor, escribe una palabra clave o reacciona con un 💎 para iniciar un proceso.")
+                img_bytes = whatsapp_utils.get_image_from_meta(msg['image']['id'])
+                cfg = ai_utils.obtener_datos_verificacion()
+                
+                res = ai_utils.verificar_pago_movil(img_bytes, cfg['cedula_esperada'], cfg['telefono_esperado'], monto)
+                whatsapp_utils.send_whatsapp_message(phone, res)
+                
+                ai_utils.save_to_db(phone, res, url_path=msg['image']['id'])
+                ai_utils.set_user_state(phone, "IDLE")
 
     except Exception as e:
-        print(f"Error general en webhook: {e}")
+        print(f"Error crítico: {e}")
     return {"status": "ok"}
