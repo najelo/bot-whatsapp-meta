@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request
 import ai_utils
 import whatsapp_utils
+import time
 
 app = FastAPI()
 
@@ -10,37 +11,33 @@ async def handle_message(request: Request):
     try:
         entry = data.get('entry', [])
         if not entry: return {"status": "ok"}
-        
         value = entry[0].get('changes', [{}])[0].get('value', {})
         
         if 'messages' in value:
             msg = value['messages'][0]
             phone = msg.get('from')
             
-            if 'text' not in msg and 'image' not in msg:
-                return {"status": "ok"}
-            
-            # --- Lógica de Texto y PDF ---
             if 'text' in msg:
                 texto = msg['text']['body']
-                resp = ai_utils.buscar_respuesta_automatica(texto)
+                # Usamos la nueva lógica que devuelve una lista de respuestas
+                lista_respuestas = ai_utils.buscar_todas_las_respuestas(texto)
                 
-                if resp:
-                    try:
-                        # Si es un enlace de tu bucket, enviamos documento
-                        if resp.startswith("http") and "recetarios-helado" in resp:
-                            whatsapp_utils.send_whatsapp_document(phone, resp, caption="Aquí tienes tu recetario")
-                        else:
-                            # Si es texto normal, enviamos mensaje
-                            whatsapp_utils.send_whatsapp_message(phone, resp)
-                        
-                        ai_utils.save_to_db(phone, resp, text=texto)
-                    except Exception as e:
-                        print(f"Error al enviar: {e}")
+                if lista_respuestas:
+                    for resp in lista_respuestas:
+                        try:
+                            # Si es un link de recetarios, lo enviamos como documento
+                            if resp.startswith("http") and "recetarios-helado" in resp:
+                                whatsapp_utils.send_whatsapp_document(phone, resp, caption="Aquí tienes tu recetario")
+                            else:
+                                whatsapp_utils.send_whatsapp_message(phone, resp)
+                            
+                            time.sleep(1.5) # Delay necesario para evitar bloqueos por envío masivo
+                            ai_utils.save_to_db(phone, resp, text=texto)
+                        except Exception as e:
+                            print(f"Error al enviar: {e}")
                 else:
                     whatsapp_utils.send_whatsapp_message(phone, "Lo siento, no encontré esa información.")
             
-            # --- Lógica de Imagen ---
             elif 'image' in msg:
                 img_bytes = whatsapp_utils.get_image_from_meta(msg['image']['id'])
                 cfg = ai_utils.obtener_datos_verificacion()
