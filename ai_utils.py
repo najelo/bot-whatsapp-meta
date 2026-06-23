@@ -16,7 +16,8 @@ def normalizar_texto(texto):
     return re.sub(r'[^a-z0-9\s]', '', texto).strip()
 
 def obtener_monto_por_emoji(emoji):
-    mapeo = {"💎": 3300.0, "⭐": 20.0, "🚀": 10.0}
+    # Ajusta los valores numéricos según corresponda para cada emoji
+    mapeo = {"💖": 3300.0, "⭐": 20.0, "💎": 10.0}
     return mapeo.get(emoji, 0.0)
 
 def buscar_todas_las_respuestas(texto_usuario):
