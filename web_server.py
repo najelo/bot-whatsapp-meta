@@ -9,42 +9,45 @@ app = FastAPI()
 async def handle_message(request: Request):
     data = await request.json()
     try:
-        entry = data.get('entry', [])
-        if not entry: return {"status": "ok"}
-        value = entry[0].get('changes', [{}])[0].get('value', {})
-        
+        value = data['entry'][0]['changes'][0]['value']
         if 'messages' in value:
             msg = value['messages'][0]
             phone = msg.get('from')
             
+            # 1. DETECCIÓN DE REACCIONES
+            if 'reaction' in msg:
+                emoji = msg['reaction']['emoji']
+                if emoji in ["💎", "💖"]:
+                    ai_utils.set_user_state(phone, "ESPERANDO_CAPTURE")
+                    whatsapp_utils.send_whatsapp_message(phone, "¡Gracias por el apoyo! Envía ahora el capture del pago para verificarlo.")
+                    return {"status": "ok"}
+
+            # 2. PROCESAMIENTO DE MENSAJES (Texto o Imagen)
             if 'text' in msg:
                 texto = msg['text']['body']
-                # Usamos la nueva lógica que devuelve una lista de respuestas
                 lista_respuestas = ai_utils.buscar_todas_las_respuestas(texto)
-                
-                if lista_respuestas:
-                    for resp in lista_respuestas:
-                        try:
-                            # Si es un link de recetarios, lo enviamos como documento
-                            if resp.startswith("http") and "recetarios-helado" in resp:
-                                whatsapp_utils.send_whatsapp_document(phone, resp, caption="Aquí tienes tu recetario")
-                            else:
-                                whatsapp_utils.send_whatsapp_message(phone, resp)
-                            
-                            time.sleep(1.5) # Delay necesario para evitar bloqueos por envío masivo
-                            ai_utils.save_to_db(phone, resp, text=texto)
-                        except Exception as e:
-                            print(f"Error al enviar: {e}")
-                else:
-                    whatsapp_utils.send_whatsapp_message(phone, "Lo siento, no encontré esa información.")
+                for resp in lista_respuestas:
+                    if resp.startswith("http") and "recetarios-helado" in resp:
+                        whatsapp_utils.send_whatsapp_document(phone, resp, caption="Aquí tienes tu recetario")
+                    else:
+                        whatsapp_utils.send_whatsapp_message(phone, resp)
+                    time.sleep(1)
             
             elif 'image' in msg:
-                img_bytes = whatsapp_utils.get_image_from_meta(msg['image']['id'])
-                cfg = ai_utils.obtener_datos_verificacion()
-                resp = ai_utils.verificar_pago_movil(img_bytes, cfg['cedula_esperada'], cfg['telefono_esperado'])
-                whatsapp_utils.send_whatsapp_message(phone, resp)
-                ai_utils.save_to_db(phone, resp, url_path=msg['image']['id'])
+                estado = ai_utils.get_user_state(phone)
+                if estado == "ESPERANDO_CAPTURE":
+                    # Solo audita si el usuario reaccionó previamente
+                    img_bytes = whatsapp_utils.get_image_from_meta(msg['image']['id'])
+                    cfg = ai_utils.obtener_datos_verificacion()
+                    resp = ai_utils.verificar_pago_movil(img_bytes, cfg['cedula_esperada'], cfg['telefono_esperado'])
+                    whatsapp_utils.send_whatsapp_message(phone, resp)
+                    
+                    # Limpiamos el estado después de auditar
+                    ai_utils.set_user_state(phone, "IDLE")
+                    ai_utils.save_to_db(phone, resp, url_path=msg['image']['id'])
+                else:
+                    whatsapp_utils.send_whatsapp_message(phone, "No estoy esperando un pago ahora mismo. Usa una palabra clave o reacciona para iniciar.")
                 
     except Exception as e:
-        print(f"Error general en webhook: {e}")
+        print(f"Error: {e}")
     return {"status": "ok"}
