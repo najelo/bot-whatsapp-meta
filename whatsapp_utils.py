@@ -35,9 +35,7 @@ def get_image_from_meta(media_id):
     url = f"https://graph.facebook.com/v25.0/{media_id}"
     response = requests.get(url, headers=headers)
     meta_data = response.json()
-    
     if 'url' in meta_data:
         image_response = requests.get(meta_data['url'], headers=headers)
         return image_response.content
-    else:
-        raise Exception("El JSON de Meta no contiene la clave 'url'.")
+    raise Exception("No se pudo obtener la imagen de Meta.")
