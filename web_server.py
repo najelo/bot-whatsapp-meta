@@ -12,10 +12,7 @@ async def handle_message(request: Request):
         entry = data.get('entry', [])
         if not entry: return {"status": "ok"}
         
-        changes = entry[0].get('changes', [{}])
-        if not changes: return {"status": "ok"}
-            
-        value = changes[0].get('value', {})
+        value = entry[0].get('changes', [{}])[0].get('value', {})
         
         if 'messages' in value:
             msg = value['messages'][0]
@@ -24,29 +21,34 @@ async def handle_message(request: Request):
             if 'text' not in msg and 'image' not in msg:
                 return {"status": "ok"}
             
+            # --- LÓGICA DE TEXTO Y PDF ---
             if 'text' in msg:
                 texto = msg['text']['body']
-                respuestas = ai_utils.buscar_respuesta_automatica(texto)
+                resp = ai_utils.buscar_respuesta_automatica(texto)
                 
-                if respuestas:
-                    # Enviamos cada respuesta encontrada de forma secuencial
-                    for resp in respuestas:
-                        whatsapp_utils.send_whatsapp_message(phone, resp)
+                if resp:
+                    try:
+                        # Si la respuesta es un link y contiene la ruta de tu bucket
+                        if resp.startswith("http") and "recetarios-helado" in resp:
+                            whatsapp_utils.send_whatsapp_document(phone, resp, caption="Aquí tienes tu archivo")
+                        else:
+                            whatsapp_utils.send_whatsapp_message(phone, resp)
+                        
                         ai_utils.save_to_db(phone, resp, text=texto)
+                    except Exception as e:
+                        print(f"ERROR al enviar: {e}")
                 else:
-                    msg_default = "Lo siento, no tengo esa información. Contacta a un administrador."
+                    msg_default = "Lo siento, no tengo esa información."
                     whatsapp_utils.send_whatsapp_message(phone, msg_default)
-                    ai_utils.save_to_db(phone, msg_default, text=texto)
             
+            # --- LÓGICA DE IMAGEN ---
             elif 'image' in msg:
                 img_bytes = whatsapp_utils.get_image_from_meta(msg['image']['id'])
                 cfg = ai_utils.obtener_datos_verificacion()
                 resp = ai_utils.verificar_pago_movil(img_bytes, cfg['cedula_esperada'], cfg['telefono_esperado'])
-                
                 whatsapp_utils.send_whatsapp_message(phone, resp)
                 ai_utils.save_to_db(phone, resp, url_path=msg['image']['id'])
-                
+            
     except Exception as e:
-        print(f"Error general en webhook: {e}")
-        
+        print(f"Error general: {e}")
     return {"status": "ok"}
