@@ -47,6 +47,17 @@ def enviar_mensaje(data):
     except requests.exceptions.RequestException as e:
         print(f"Error al enviar a WhatsApp: {e}")
         return None
+
+        }
+    # -----------------------------------
+
+    try:
+        response = requests.post(url, headers=headers, json=payload)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        print(f"Error al enviar a WhatsApp: {e}")
+        return None
 (url, headers=headers)
     meta_data = response.json()
     if 'url' in meta_data:
