@@ -1,39 +1,53 @@
-import os
 import requests
-import time
-from auth_utils import get_supabase
+import json
+from decouple import config
 
-def send_whatsapp_message(to, text):
-    url = f"https://graph.facebook.com/v25.0/{os.getenv('PHONE_NUMBER_ID')}/messages"
+# Obtener variables desde el archivo .env
+TOKEN = config("TOKEN")
+PHONE_NUMBER_ID = config("PHONE_NUMBER_ID")
+VERSION = "v21.0" # Asegúrate de que esta versión sea la que usas
+
+def enviar_mensaje(data):
+    url = f"https://graph.facebook.com/{VERSION}/{PHONE_NUMBER_ID}/messages"
     headers = {
-        "Authorization": f"Bearer {os.getenv('ACCESS_TOKEN')}",
+        "Authorization": f"Bearer {TOKEN}",
         "Content-Type": "application/json"
     }
-    payload = {"messaging_product": "whatsapp", "to": to, "text": {"body": text}}
-    requests.post(url, headers=headers, json=payload)
 
-def send_whatsapp_document(to, pdf_url, caption="Aquí tienes tu archivo"):
-    url = f"https://graph.facebook.com/v25.0/{os.getenv('PHONE_NUMBER_ID')}/messages"
-    headers = {
-        "Authorization": f"Bearer {os.getenv('ACCESS_TOKEN')}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": to,
-        "type": "document",
-        "document": {
-            "link": pdf_url,
-            "caption": caption,
-            "filename": "recetario.pdf"
+    contenido = data.get("body")
+    numero = data.get("to")
+
+    # --- LÓGICA INTELIGENTE DE ENVÍO ---
+    # Si el contenido es un link (archivo PDF de Supabase)
+    if contenido.startswith("http"):
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": numero,
+            "type": "document",
+            "document": {
+                "link": contenido,
+                "caption": "Aquí tienes tu archivo",
+                "filename": "recetario.pdf"
+            }
         }
-    }
-    requests.post(url, headers=headers, json=payload)
+    else:
+        # Si es texto normal
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": numero,
+            "type": "text",
+            "text": {"body": contenido}
+        }
+    # -----------------------------------
 
-def get_image_from_meta(media_id):
-    headers = {"Authorization": f"Bearer {os.getenv('ACCESS_TOKEN')}"}
-    url = f"https://graph.facebook.com/v25.0/{media_id}"
-    response = requests.get(url, headers=headers)
+    try:
+        response = requests.post(url, headers=headers, json=payload)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        print(f"Error al enviar a WhatsApp: {e}")
+        return None
+(url, headers=headers)
     meta_data = response.json()
     if 'url' in meta_data:
         image_response = requests.get(meta_data['url'], headers=headers)
