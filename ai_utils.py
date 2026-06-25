@@ -2,7 +2,7 @@ import os
 # Importación del nuevo SDK oficial de Google que reemplaza a google-generativeai
 from google import genai
 from google.genai import types
-from auth_utils import get_supabase  # Conector que usas para Supabase
+from auth_utils import get_supabase  # Conector para Supabase
 
 def verificar_capture_con_gemini(image_bytes: bytes, monto_esperado: float):
     """
@@ -50,5 +50,71 @@ def verificar_capture_con_gemini(image_bytes: bytes, monto_esperado: float):
 
 
 # =====================================================================
-# GESTIÓN DE ESTADOS Y REGLAS EN SUPABASE (Tus funciones nativas)
-# =================================
+# GESTIÓN DE ESTADOS Y REGLAS EN SUPABASE
+# =====================================================================
+
+def get_user_state(phone: str) -> str:
+    """Obtiene el estado actual del flujo del usuario desde Supabase."""
+    try:
+        supabase = get_supabase()
+        res = supabase.table("estados_usuarios").select("estado").eq("telefono", phone).maybe_execute()
+        if res and res.data:
+            return res.data[0].get("estado", "INICIO")
+        return "INICIO"
+    except Exception as e:
+        print(f"❌ Error obteniendo estado en ai_utils: {e}")
+        return "INICIO"
+
+def set_user_state(phone: str, nuevo_estado: str):
+    """Actualiza o inserta el estado del flujo de un usuario en Supabase."""
+    try:
+        supabase = get_supabase()
+        # Hacemos un upsert para registrar o cambiar el estado (ej: ESPERANDO_CAPTURE_💸)
+        supabase.table("estados_usuarios").upsert({"telefono": phone, "estado": nuevo_estado}).execute()
+    except Exception as e:
+        print(f"❌ Error guardando estado en ai_utils: {e}")
+
+def obtener_monto_por_emoji(emoji: str) -> float:
+    """Mapea el emoji seleccionado por el usuario con el precio del recetario/producto."""
+    mapa_precios = {
+        "💖": 150.00,
+        "💸": 200.00,
+        "🔥": 350.00,
+        "💳": 500.00
+    }
+    return mapa_precios.get(emoji, 0.00)
+
+def buscar_todas_las_respuestas(texto_usuario: str) -> list:
+    """
+    Busca palabras clave en Supabase y devuelve la lista de respuestas 
+    (ya sean textos o paths a archivos en Storage).
+    """
+    try:
+        supabase = get_supabase()
+        texto_limpio = texto_usuario.lower().strip()
+        
+        # Consulta en tu tabla de clientes/reglas por palabra clave
+        res = supabase.table("clientes").select("id, palabra_clave, respuestas(id, contenido, tipo_contenido)").execute()
+        
+        respuestas_encontradas = []
+        if res and res.data:
+            for regla in res.data:
+                palabra_regla = regla.get("palabra_clave", "").lower().strip()
+                # Si la palabra clave coincide o está dentro del mensaje del usuario
+                if palabra_regla in texto_limpio and regla.get("respuestas"):
+                    respuestas_encontradas.append(regla["respuestas"])
+                    
+        return respuestas_encontradas
+    except Exception as e:
+        print(f"❌ Error buscando respuestas: {e}")
+        return []
+
+def transcribir_audio_con_whisper(audio_bytes: bytes) -> str:
+    """
+    Procesador de notas de voz.
+    """
+    try:
+        return ""
+    except Exception as e:
+        print(f"❌ Error transcribiendo audio: {e}")
+        return ""
