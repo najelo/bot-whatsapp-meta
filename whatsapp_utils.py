@@ -1,58 +1,47 @@
-import os
 import requests
-from auth_utils import get_supabase
+import os
 
-def send_whatsapp_message(to, text):
-    url = f"https://graph.facebook.com/v25.0/{os.getenv('PHONE_NUMBER_ID')}/messages"
-    headers = {
-        "Authorization": f"Bearer {os.getenv('ACCESS_TOKEN')}",
-        "Content-Type": "application/json"
-    }
-    payload = {"messaging_product": "whatsapp", "to": to, "text": {"body": text}}
-    requests.post(url, headers=headers, json=payload)
+# Asegúrate de tener estas variables de entorno configuradas en tu servidor (Render)
+WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
+VERSION = "v20.0"  # O la versión de Graph API que estés utilizando
 
-def send_whatsapp_document(to, pdf_url, caption="Aquí tienes tu archivo"):
-    url = f"https://graph.facebook.com/v25.0/{os.getenv('PHONE_NUMBER_ID')}/messages"
-    headers = {
-        "Authorization": f"Bearer {os.getenv('ACCESS_TOKEN')}",
-        "Content-Type": "application/json"
-    }
-    # --- AQUÍ ESTÁ LA CLAVE: type es 'document' ---
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": to,
-        "type": "document",
-        "document": {
-            "link": pdf_url,
-            "caption": caption,
-            "filename": "recetario.pdf"
+def get_media_url(media_id: str) -> str:
+    """
+    Consulta a la API de Meta usando el ID del archivo multimedia 
+    para obtener su URL de descarga temporal.
+    """
+    try:
+        url = f"https://graph.facebook.com/{VERSION}/{media_id}"
+        headers = {
+            "Authorization": f"Bearer {WHATSAPP_TOKEN}"
         }
-    }
-    requests.post(url, headers=headers, json=payload)
+        response = requests.get(url, headers=headers)
+        
+        if response.status_code == 200:
+            # Meta nos devuelve un JSON con la clave 'url'
+            return response.json().get("url")
+        else:
+            print(f"❌ Error al obtener URL de multimedia de Meta (Status {response.status_code}): {response.text}")
+            return None
+    except Exception as e:
+        print(f"❌ Excepción al obtener URL de multimedia: {e}")
+        return None
 
-# MODIFICACIÓN AGREGADA: Función para enviar los audios de la base de datos
-def send_whatsapp_audio(to, audio_url):
-    url = f"https://graph.facebook.com/v25.0/{os.getenv('PHONE_NUMBER_ID')}/messages"
-    headers = {
-        "Authorization": f"Bearer {os.getenv('ACCESS_TOKEN')}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": to,
-        "type": "audio",
-        "audio": {
-            "link": audio_url
+def download_media(media_url: str) -> bytes:
+    """
+    Descarga los bytes del archivo desde la URL temporal provista por Meta.
+    """
+    try:
+        headers = {
+            "Authorization": f"Bearer {WHATSAPP_TOKEN}",
+            "User-Agent": "Mozilla/5.0"  # Meta a veces bloquea peticiones sin User-Agent definido
         }
-    }
-    requests.post(url, headers=headers, json=payload)
-
-def get_image_from_meta(media_id):
-    headers = {"Authorization": f"Bearer {os.getenv('ACCESS_TOKEN')}"}
-    url = f"https://graph.facebook.com/v25.0/{media_id}"
-    response = requests.get(url, headers=headers)
-    meta_data = response.json()
-    if 'url' in meta_data:
-        image_response = requests.get(meta_data['url'], headers=headers)
-        return image_response.content
-    raise Exception("No se pudo obtener la imagen de Meta.")
+        response = requests.get(media_url, headers=headers)
+        if response.status_code == 200:
+            return response.content
+        else:
+            print(f"❌ Error al descargar archivo desde Meta (Status {response.status_code})")
+            return None
+    except Exception as e:
+        print(f"❌ Excepción al descargar archivo de Meta: {e}")
+        return None
