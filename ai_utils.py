@@ -23,7 +23,7 @@ def verificar_capture_con_gemini(image_bytes: bytes, monto_esperado: float):
         """
         
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-3.5-flash',
             contents=[imagen_ia, prompt]
         )
         
