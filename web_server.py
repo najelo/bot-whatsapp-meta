@@ -23,24 +23,29 @@ async def handle_message(request: Request):
                 whatsapp_utils.send_whatsapp_message(phone, f"Has elegido {emoji}. Envía el capture para verificar.")
                 return {"status": "ok"}
 
-        # 2. GESTIÓN DE TEXTO Y AUDIO (Lógica optimizada para evitar duplicados)
+        # 2. GESTIÓN DE TEXTO Y AUDIO (Adaptado a tu función buscar_todas_las_respuestas)
         if 'text' in msg:
             texto = msg['text']['body']
-            # Usamos la nueva búsqueda única
-            respuesta = ai_utils.buscar_respuesta_unica(texto)
+            # Usamos tu función real de ai_utils que busca en la base de datos
+            respuestas = ai_utils.buscar_todas_las_respuestas(texto)
             
-            if respuesta:
-                if respuesta.startswith("http"):
-                    # MODIFICACIÓN AGREGADA: Detectar si el archivo de la BD es una nota de voz o audio
-                    extension = respuesta.split('?')[0].split('.')[-1].lower()
-                    if extension in ["mp3", "wav", "m4a", "ogg", "opus"]:
-                        whatsapp_utils.send_whatsapp_audio(phone, respuesta)
+            if respuestas:
+                # Recorremos todas las respuestas encontradas (útil para flujos en cadena)
+                for respuesta in respuestas:
+                    if respuesta.startswith("http"):
+                        # Detectamos la extensión del archivo multimedia limpiando parámetros de URL
+                        extension = respuesta.split('?')[0].split('.')[-1].lower()
+                        
+                        # Si es un formato de audio, enviamos como nota de voz/audio nativo
+                        if extension in ["mp3", "wav", "m4a", "ogg", "opus"]:
+                            whatsapp_utils.send_whatsapp_audio(phone, respuesta)
+                        else:
+                            # Si es PDF, imagen o video, se envía como documento de forma segura
+                            whatsapp_utils.send_whatsapp_document(phone, respuesta, caption="Aquí tienes tu archivo")
                     else:
-                        whatsapp_utils.send_whatsapp_document(phone, respuesta, caption="Aquí tienes tu archivo")
-                else:
-                    whatsapp_utils.send_whatsapp_message(phone, respuesta)
+                        whatsapp_utils.send_whatsapp_message(phone, respuesta)
             else:
-                # Si no está en BD, enviamos a IA
+                # Si no está en BD, enviamos a la IA (Gemini)
                 respuesta_ia = ai_utils.generar_respuesta_ia(texto)
                 whatsapp_utils.send_whatsapp_message(phone, respuesta_ia)
 
