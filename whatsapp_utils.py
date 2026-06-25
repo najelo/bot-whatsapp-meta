@@ -1,8 +1,7 @@
 import os
 import requests
-from auth_utils import get_supabase
 
-# Usamos ACCESS_TOKEN que es la variable configurada en tu web_server y whatsapp_utils original
+# Variables de entorno leídas consistentemente
 ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
 VERSION = "v25.0"
@@ -46,24 +45,51 @@ def send_whatsapp_document(to, pdf_url, caption="Aquí tienes tu archivo"):
     except Exception as e:
         print(f"❌ Excepción en send_whatsapp_document: {e}")
 
-def get_image_from_meta(media_id):
-    """Obtiene y descarga los bytes de la imagen desde Meta usando el ID del archivo."""
-    headers = {"Authorization": f"Bearer {ACCESS_TOKEN}"}
-    url = f"https://graph.facebook.com/{VERSION}/{media_id}"
-    
-    response = requests.get(url, headers=headers)
-    meta_data = response.json()
-    
-    if 'url' in meta_data:
-        # User-Agent añadido para prevenir bloqueos de descarga por políticas de Meta
-        download_headers = {
+# =====================================================================
+# SOPORTE PARA CÓDIGO BASADO EN REPOSITORIO ZIP (get_media_url + download_media)
+# =====================================================================
+
+def get_media_url(media_id: str) -> str:
+    """Consulta a Meta usando el ID multimedia para obtener su URL de descarga."""
+    try:
+        url = f"https://graph.facebook.com/{VERSION}/{media_id}"
+        headers = {"Authorization": f"Bearer {ACCESS_TOKEN}"}
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            return response.json().get("url")
+        print(f"❌ Error al obtener URL de Meta (Status {response.status_code}): {response.text}")
+        return None
+    except Exception as e:
+        print(f"❌ Excepción en get_media_url: {e}")
+        return None
+
+def download_media(media_url: str) -> bytes:
+    """Descarga los bytes del archivo desde la URL provista por Meta."""
+    try:
+        if not media_url:
+            return None
+        headers = {
             "Authorization": f"Bearer {ACCESS_TOKEN}",
             "User-Agent": "Mozilla/5.0"
         }
-        image_response = requests.get(meta_data['url'], headers=download_headers)
-        if image_response.status_code == 200:
-            return image_response.content
-        else:
-            raise Exception(f"Error al descargar bytes multimedia. Status: {image_response.status_code}")
-            
-    raise Exception(f"No se pudo obtener la URL de descarga de Meta. Respuesta: {meta_data}")
+        response = requests.get(media_url, headers=headers)
+        if response.status_code == 200:
+            return response.content
+        print(f"❌ Error al descargar archivo de Meta (Status {response.status_code})")
+        return None
+    except Exception as e:
+        print(f"❌ Excepción en download_media: {e}")
+        return None
+
+# =====================================================================
+# SOPORTE PARA CÓDIGO BASADO EN RAÍZ (get_image_from_meta)
+# =====================================================================
+
+def get_image_from_meta(media_id):
+    """Obtiene y descarga los bytes de la imagen en un solo paso."""
+    url_temporal = get_media_url(media_id)
+    if url_temporal:
+        bytes_imagen = download_media(url_temporal)
+        if bytes_imagen:
+            return bytes_imagen
+    raise Exception("No se pudo obtener ni descargar la imagen de Meta de forma unificada.")
