@@ -50,15 +50,15 @@ def verificar_capture_con_gemini(image_bytes: bytes, monto_esperado: float):
 
 
 # =====================================================================
-# GESTIÓN DE ESTADOS Y REGLAS EN SUPABASE (Corregido para nuevas versiones)
+# GESTIÓN DE ESTADOS Y REGLAS EN SUPABASE (Corregido a tabla 'estados_usuario')
 # =====================================================================
 
 def get_user_state(phone: str) -> str:
     """Obtiene el estado actual del flujo del usuario desde Supabase."""
     try:
         supabase = get_supabase()
-        # CORREGIDO: Usamos .execute() de forma segura en lugar de .maybe_execute()
-        res = supabase.table("estados_usuarios").select("estado").eq("telefono", phone).execute()
+        # CORREGIDO: Nombre de tabla en singular 'estados_usuario' y método .execute()
+        res = supabase.table("estados_usuario").select("estado").eq("telefono", phone).execute()
         
         # Verificamos si la lista tiene datos antes de acceder al índice [0]
         if res and res.data and len(res.data) > 0:
@@ -73,8 +73,8 @@ def set_user_state(phone: str, nuevo_estado: str):
     """Actualiza o inserta el estado del flujo de un usuario en Supabase."""
     try:
         supabase = get_supabase()
-        # Hacemos un upsert para registrar o cambiar el estado (ej: ESPERANDO_CAPTURE_💸)
-        supabase.table("estados_usuarios").upsert({"telefono": phone, "estado": nuevo_estado}).execute()
+        # CORREGIDO: Nombre de tabla en singular 'estados_usuario'
+        supabase.table("estados_usuario").upsert({"telefono": phone, "estado": nuevo_estado}).execute()
     except Exception as e:
         print(f"❌ Error guardando estado en ai_utils: {e}")
 
