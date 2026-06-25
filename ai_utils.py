@@ -16,7 +16,6 @@ def normalizar_texto(texto):
     return re.sub(r'[^a-z0-9\s]', '', texto).strip()
 
 def obtener_monto_por_emoji(emoji):
-    # Ajusta los valores numéricos según corresponda para cada emoji
     mapeo = {"💖": 3300.0, "⭐": 20.0, "💎": 10.0}
     return mapeo.get(emoji, 0.0)
 
@@ -24,13 +23,23 @@ def buscar_todas_las_respuestas(texto_usuario):
     texto_limpio = normalizar_texto(texto_usuario)
     lista_respuestas = []
     try:
+        # Ajustado según tu última estructura de consultas relacionales en Supabase
         reglas = supabase.table("clientes").select("palabra_clave, respuesta_id").execute().data
         for r in reglas:
-            if normalizar_texto(r['palabra_clave']) in texto_limpio:
+            if normalizar_texto(r.get('palabra_clave', '')) in texto_limpio:
                 resp = supabase.table("respuestas").select("contenido").eq("id", r['respuesta_id']).execute().data
-                if resp: lista_respuestas.append(resp[0]['contenido'])
-    except Exception as e: print(f"Error BD: {e}")
+                if resp: 
+                    lista_respuestas.append(resp[0]['contenido'])
+    except Exception as e: 
+        print(f"Error BD: {e}")
     return lista_respuestas
+
+def generar_respuesta_ia(texto_usuario):
+    try:
+        prompt = f"Eres un asistente virtual automatizado para WhatsApp. Responde de forma concisa y amable al siguiente mensaje: {texto_usuario}"
+        return model.generate_content(prompt).text
+    except Exception as e:
+        return "Disculpa, no puedo procesar tu solicitud en este momento."
 
 def verificar_pago_movil(img_bytes, cedula, telefono, monto_minimo):
     try:
@@ -51,7 +60,7 @@ def set_user_state(phone, state):
 
 def get_user_state(phone):
     res = supabase.table("estados_usuario").select("estado").eq("phone", phone).execute()
-    return res.data[0]['estado'] if res.data else "IDLE" logic
+    return res.data[0]['estado'] if res.data else "IDLE"
 
 def save_to_db(phone, response, text=None, url_path=None):
     try:
