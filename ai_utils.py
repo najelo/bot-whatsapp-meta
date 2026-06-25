@@ -8,7 +8,7 @@ from auth_utils import get_supabase
 
 # Configuración
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel('gemini-1.5-flash') # Asegúrate de usar un modelo válido
+model = genai.GenerativeModel('gemini-3.5-flash') # Asegúrate de usar un modelo válido
 supabase = get_supabase()
 
 def normalizar_texto(texto):
