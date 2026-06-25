@@ -1,7 +1,7 @@
 import os
 import requests
 
-# Variables de entorno leídas consistentemente
+# Variables de entorno leídas consistentemente de tu entorno en Render
 ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
 VERSION = "v25.0"
@@ -46,7 +46,7 @@ def send_whatsapp_document(to, pdf_url, caption="Aquí tienes tu archivo"):
         print(f"❌ Excepción en send_whatsapp_document: {e}")
 
 # =====================================================================
-# SOPORTE PARA CÓDIGO BASADO EN REPOSITORIO ZIP (get_media_url + download_media)
+# MÉTODOS DE DESCARGA ADAPTADOS A TU WEB_SERVER.PY ORIGINAL
 # =====================================================================
 
 def get_media_url(media_id: str) -> str:
@@ -81,15 +81,14 @@ def download_media(media_url: str) -> bytes:
         print(f"❌ Excepción en download_media: {e}")
         return None
 
-# =====================================================================
-# SOPORTE PARA CÓDIGO BASADO EN RAÍZ (get_image_from_meta)
-# =====================================================================
-
 def get_image_from_meta(media_id):
-    """Obtiene y descarga los bytes de la imagen en un solo paso."""
+    """
+    Obtiene y descarga los bytes de la imagen de forma unificada en un solo paso
+    tal como lo invoca tu web_server.py en la línea 53.
+    """
     url_temporal = get_media_url(media_id)
     if url_temporal:
         bytes_imagen = download_media(url_temporal)
         if bytes_imagen:
             return bytes_imagen
-    raise Exception("No se pudo obtener ni descargar la imagen de Meta de forma unificada.")
+    raise Exception("No se pudo obtener ni descargar la imagen de Meta.")
