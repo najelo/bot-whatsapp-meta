@@ -10,10 +10,7 @@ app = FastAPI()
 WEBHOOK_VERIFY_TOKEN = os.getenv("WEBHOOK_VERIFY_TOKEN", "tu_token_secreto_aqui")
 
 def enviar_respuestas_secuenciales(phone: str, respuestas_lista: list):
-    """
-    Ejecuta el bucle de envío en segundo plano. Esto evita que Meta 
-    asuma que el servidor está caído y duplique/triplique los mensajes.
-    """
+    """Ejecuta el bucle de envío de reglas en segundo plano."""
     for resp in respuestas_lista:
         contenido = resp.get("contenido")
         tipo = resp.get("tipo_contenido", "texto")
@@ -27,8 +24,27 @@ def enviar_respuestas_secuenciales(phone: str, respuestas_lista: list):
         elif tipo == "audio":
             whatsapp_utils.send_whatsapp_audio(phone, contenido)
             
-        # Pausa de cortesía entre mensajes de la cadena
         time.sleep(1.5)
+
+def procesar_verificacion_pago_bg(phone: str, image_bytes: bytes, monto_esperado: float):
+    """
+    Procesa la imagen con Gemini en segundo plano para que Meta 
+    no reenvíe el mensaje por tardar más de 7 segundos.
+    """
+    try:
+        # Tu validación nativa con Gemini API
+        exito, respuesta_ia = ai_utils.verificar_capture_con_gemini(image_bytes, monto_esperado)
+        
+        if exito:
+            whatsapp_utils.send_whatsapp_message(phone, f"✅ Pago verificado con éxito:\n\n{respuesta_ia}")
+            ai_utils.set_user_state(phone, "INICIO")  # Liberamos el estado del usuario
+        else:
+            whatsapp_utils.send_whatsapp_message(phone, f"❌ {respuesta_ia}")
+            # NOTA: Aquí puedes decidir si dejas al usuario en el estado de pago para que reintente
+            # o si prefieres resetearlo con ai_utils.set_user_state(phone, "INICIO")
+    except Exception as e:
+        print(f"Error en la verificación en segundo plano: {e}")
+        whatsapp_utils.send_whatsapp_message(phone, "⚠️ Ocurrió un error interno al procesar tu imagen. Por favor, reintenta.")
 
 @app.get("/webhook")
 async def verificar_webhook(request: Request):
@@ -49,7 +65,6 @@ async def recibir_notificacion(request: Request, background_tasks: BackgroundTas
     try:
         body = await request.json()
         
-        # Estructura básica de Meta
         entry = body.get("entry", [])[0]
         changes = entry.get("changes", [])[0]
         value = changes.get("value", {})
@@ -68,7 +83,6 @@ async def recibir_notificacion(request: Request, background_tasks: BackgroundTas
         # CASO A: EL BOT ESTÁ ESPERANDO UN CAPTURE
         # ==========================================
         if estado and estado.startswith("ESPERANDO_CAPTURE_"):
-            # Si envía una imagen, procesamos el pago de inmediato con tu lógica
             if msg.get("type") == "image":
                 emoji_usado = estado.split("_")[2]
                 monto_esperado = ai_utils.obtener_monto_por_emoji(emoji_usado)
@@ -77,18 +91,13 @@ async def recibir_notificacion(request: Request, background_tasks: BackgroundTas
                 image_url = whatsapp_utils.get_media_url(image_id)
                 image_bytes = whatsapp_utils.download_media(image_url)
                 
-                # Tu validación nativa con Gemini API
-                exito, respuesta_ia = ai_utils.verificar_capture_con_gemini(image_bytes, monto_esperado)
-                
-                if exito:
-                    whatsapp_utils.send_whatsapp_message(phone, f"✅ Pago verificado con éxito:\n\n{respuesta_ia}")
-                    ai_utils.set_user_state(phone, "INICIO")  # Liberamos el estado
-                else:
-                    whatsapp_utils.send_whatsapp_message(phone, f"❌ {respuesta_ia}")
+                # MODIFICACIÓN CLAVE: Delegamos la verificación pesada a las tareas en segundo plano
+                # y le respondemos inmediatamente "OK" a Meta para frenar los reenvíos locos.
+                background_tasks.add_task(procesar_verificacion_pago_bg, phone, image_bytes, monto_esperado)
                 return "OK", 200
 
-            # SI ENVÍA TEXTO O AUDIO MIENTRAS SE ESPERA EL PAGO, SE BLOQUEA Y SE LE RECUERDA EL CAPTURE
             else:
+                # Si envía otra cosa que no sea imagen, le recordamos el pago
                 whatsapp_utils.send_whatsapp_message(
                     phone, 
                     "⚠️ Tienes una verificación de pago pendiente.\nPor favor, envía la imagen del capture de tu Pago Móvil para continuar."
@@ -98,39 +107,30 @@ async def recibir_notificacion(request: Request, background_tasks: BackgroundTas
         # ==========================================
         # CASO B: FLUJO NORMAL (BOT LIBRE O INICIO)
         # ==========================================
-        # 2. Si el usuario reacciona con un Emoji a un mensaje (Iniciador de Pago)
         if msg.get("type") == "reaction":
             emoji = msg["reaction"].get("emoji")
-            # Registramos que ahora esperamos la foto para ese emoji específico
             ai_utils.set_user_state(phone, f"ESPERANDO_CAPTURE_{emoji}")
             whatsapp_utils.send_whatsapp_message(phone, f"Has elegido {emoji}. Envía el capture de tu pago para verificar.")
             return "OK", 200
 
-        # 3. Si el usuario envía un mensaje de texto plano
         if msg.get("type") == "text":
             texto_usuario = msg["text"]["body"].strip()
-            
-            # Buscamos en Supabase si la palabra clave activa una cadena de respuestas
             respuestas_encontradas = ai_utils.buscar_todas_las_respuestas(texto_usuario)
             
             if respuestas_encontradas:
-                # Se delega al BackgroundTask para responder al instante a Meta con un 200 OK
                 background_tasks.add_task(enviar_respuestas_secuenciales, phone, respuestas_encontradas)
             else:
-                # Mensaje por defecto si no coincide ninguna regla
                 whatsapp_utils.send_whatsapp_message(
                     phone, 
                     "No estoy esperando un pago. Reacciona con un emoji para iniciar o escribe una palabra clave válida."
                 )
             return "OK", 200
 
-        # 4. Si el usuario envía una nota de voz (Transcripción asíncrona)
         if msg.get("type") == "audio":
             audio_id = msg["audio"]["id"]
             audio_url = whatsapp_utils.get_media_url(audio_id)
             audio_bytes = whatsapp_utils.download_media(audio_url)
             
-            # Ejecutamos tu transcripción nativa en la que estás trabajando
             texto_transcrito = ai_utils.transcribir_audio_con_whisper(audio_bytes)
             
             if texto_transcrito:
