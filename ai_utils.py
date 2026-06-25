@@ -6,17 +6,20 @@ import re
 import google.generativeai as genai
 from auth_utils import get_supabase
 
-# Configuración
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel('gemini-3.5-flash') # Asegúrate de usar un modelo válido
+# Inicialización segura usando auth_utils
 supabase = get_supabase()
+
+# Configuración de Gemini
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+model = genai.GenerativeModel('gemini-3.5-flash')
 
 def normalizar_texto(texto):
     texto = unicodedata.normalize('NFD', texto.lower()).encode('ascii', 'ignore').decode('utf-8')
     return re.sub(r'[^a-z0-9\s]', '', texto).strip()
 
+# --- NUEVA FUNCIÓN CORREGIDA (Evita duplicados) ---
 def buscar_respuesta_unica(texto_usuario):
-    """Busca solo la primera coincidencia exacta para evitar duplicados."""
+    """Busca y retorna solo la primera coincidencia exacta."""
     texto_limpio = normalizar_texto(texto_usuario)
     try:
         reglas = supabase.table("clientes").select("palabra_clave, respuesta_id").execute().data
@@ -30,7 +33,7 @@ def buscar_respuesta_unica(texto_usuario):
     return None
 
 def generar_respuesta_ia(texto_usuario):
-    """Genera respuesta usando Gemini si no hay coincidencia en BD."""
+    """Respaldo para cuando no hay respuesta en la base de datos."""
     try:
         response = model.generate_content(f"Eres un asistente servicial. Responde a: {texto_usuario}")
         return response.text
