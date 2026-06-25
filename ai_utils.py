@@ -4,33 +4,42 @@ import PIL.Image
 import unicodedata
 import re
 import google.generativeai as genai
-from supabase import create_client
+from auth_utils import get_supabase
 
 # Configuración
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel('gemini-3.5-flash')
-supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
+model = genai.GenerativeModel('gemini-1.5-flash') # Asegúrate de usar un modelo válido
+supabase = get_supabase()
 
 def normalizar_texto(texto):
     texto = unicodedata.normalize('NFD', texto.lower()).encode('ascii', 'ignore').decode('utf-8')
     return re.sub(r'[^a-z0-9\s]', '', texto).strip()
 
-def obtener_monto_por_emoji(emoji):
-    # Ajusta los valores numéricos según corresponda para cada emoji
-    mapeo = {"💖": 3300.0, "⭐": 20.0, "💎": 10.0}
-    return mapeo.get(emoji, 0.0)
-
-def buscar_todas_las_respuestas(texto_usuario):
+def buscar_respuesta_unica(texto_usuario):
+    """Busca solo la primera coincidencia exacta para evitar duplicados."""
     texto_limpio = normalizar_texto(texto_usuario)
-    lista_respuestas = []
     try:
         reglas = supabase.table("clientes").select("palabra_clave, respuesta_id").execute().data
         for r in reglas:
-            if normalizar_texto(r['palabra_clave']) in texto_limpio:
+            if normalizar_texto(r['palabra_clave']) == texto_limpio:
                 resp = supabase.table("respuestas").select("contenido").eq("id", r['respuesta_id']).execute().data
-                if resp: lista_respuestas.append(resp[0]['contenido'])
-    except Exception as e: print(f"Error BD: {e}")
-    return lista_respuestas
+                if resp:
+                    return resp[0]['contenido']
+    except Exception as e: 
+        print(f"Error BD: {e}")
+    return None
+
+def generar_respuesta_ia(texto_usuario):
+    """Genera respuesta usando Gemini si no hay coincidencia en BD."""
+    try:
+        response = model.generate_content(f"Eres un asistente servicial. Responde a: {texto_usuario}")
+        return response.text
+    except Exception as e:
+        return "Lo siento, no puedo procesar tu solicitud ahora mismo."
+
+def obtener_monto_por_emoji(emoji):
+    mapeo = {"💖": 3300.0, "⭐": 20.0, "💎": 10.0}
+    return mapeo.get(emoji, 0.0)
 
 def verificar_pago_movil(img_bytes, cedula, telefono, monto_minimo):
     try:
