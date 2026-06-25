@@ -30,26 +30,8 @@ def send_whatsapp_document(to, pdf_url, caption="Aquí tienes tu archivo"):
     }
     requests.post(url, headers=headers, json=payload)
 
-def send_whatsapp_image(to, image_url, caption=""):
-    """Envía una imagen nativa utilizando su URL pública."""
-    url = f"https://graph.facebook.com/v25.0/{os.getenv('PHONE_NUMBER_ID')}/messages"
-    headers = {
-        "Authorization": f"Bearer {os.getenv('ACCESS_TOKEN')}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": to,
-        "type": "image",
-        "image": {
-            "link": image_url,
-            "caption": caption
-        }
-    }
-    requests.post(url, headers=headers, json=payload)
-
+# MODIFICACIÓN AGREGADA: Función para enviar los audios de la base de datos
 def send_whatsapp_audio(to, audio_url):
-    """Envía un archivo de audio o nota de voz utilizando su URL pública."""
     url = f"https://graph.facebook.com/v25.0/{os.getenv('PHONE_NUMBER_ID')}/messages"
     headers = {
         "Authorization": f"Bearer {os.getenv('ACCESS_TOKEN')}",
