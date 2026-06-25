@@ -17,7 +17,6 @@ def send_whatsapp_document(to, pdf_url, caption="Aquí tienes tu archivo"):
         "Authorization": f"Bearer {os.getenv('ACCESS_TOKEN')}",
         "Content-Type": "application/json"
     }
-    # --- AQUÍ ESTÁ LA CLAVE: type es 'document' ---
     payload = {
         "messaging_product": "whatsapp",
         "to": to,
@@ -25,7 +24,40 @@ def send_whatsapp_document(to, pdf_url, caption="Aquí tienes tu archivo"):
         "document": {
             "link": pdf_url,
             "caption": caption,
-            "filename": "recetario.pdf"
+            "filename": "documento.pdf"
+        }
+    }
+    requests.post(url, headers=headers, json=payload)
+
+def send_whatsapp_image(to, image_url, caption=""):
+    url = f"https://graph.facebook.com/v25.0/{os.getenv('PHONE_NUMBER_ID')}/messages"
+    headers = {
+        "Authorization": f"Bearer {os.getenv('ACCESS_TOKEN')}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "image",
+        "image": {
+            "link": image_url,
+            "caption": caption
+        }
+    }
+    requests.post(url, headers=headers, json=payload)
+
+def send_whatsapp_audio(to, audio_url):
+    url = f"https://graph.facebook.com/v25.0/{os.getenv('PHONE_NUMBER_ID')}/messages"
+    headers = {
+        "Authorization": f"Bearer {os.getenv('ACCESS_TOKEN')}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "audio",
+        "audio": {
+            "link": audio_url
         }
     }
     requests.post(url, headers=headers, json=payload)
