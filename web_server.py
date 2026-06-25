@@ -6,15 +6,27 @@ import whatsapp_utils
 
 app = FastAPI()
 
-# Token de verificación para configurar el Webhook en Meta Developers
+# Token de verificación para configurar el Webhook en el panel de Meta Developers
 WEBHOOK_VERIFY_TOKEN = os.getenv("WEBHOOK_VERIFY_TOKEN", "tu_token_secreto_aqui")
 
 def enviar_respuestas_secuenciales(phone: str, respuestas_lista: list):
-    """Ejecuta el bucle de envío de reglas en segundo plano."""
+    """
+    Ejecuta el envío de ráfagas de mensajes en cadena en segundo plano.
+    Evita bloqueos y valida si la respuesta viene como texto plano o diccionario.
+    """
     for resp in respuestas_lista:
-        contenido = resp.get("contenido")
-        tipo = resp.get("tipo_contenido", "texto")
-        
+        # Si la respuesta ya es una cadena de texto (string) directa:
+        if isinstance(resp, str):
+            contenido = resp
+            tipo = "texto"
+        # Si la respuesta viene estructurada como un diccionario/objeto:
+        elif isinstance(resp, dict):
+            contenido = resp.get("contenido")
+            tipo = resp.get("tipo_contenido", "texto")
+        else:
+            continue  # Si es un formato desconocido, pasa al siguiente
+            
+        # Ejecutar el envío según el tipo detectado
         if tipo == "texto":
             whatsapp_utils.send_whatsapp_message(phone, contenido)
         elif tipo == "documento":
@@ -28,11 +40,11 @@ def enviar_respuestas_secuenciales(phone: str, respuestas_lista: list):
 
 def procesar_verificacion_pago_bg(phone: str, image_bytes: bytes, monto_esperado: float):
     """
-    Procesa la imagen con Gemini en segundo plano para que Meta 
-    no reenvíe el mensaje por tardar más de 7 segundos.
+    Procesa la imagen con Gemini en segundo plano para que el webhook 
+    responda de inmediato a Meta y no se repitan los mensajes de forma loca.
     """
     try:
-        # Tu validación nativa con Gemini API
+        # Validación inteligente con la API de Gemini
         exito, respuesta_ia = ai_utils.verificar_capture_con_gemini(image_bytes, monto_esperado)
         
         if exito:
@@ -40,11 +52,11 @@ def procesar_verificacion_pago_bg(phone: str, image_bytes: bytes, monto_esperado
             ai_utils.set_user_state(phone, "INICIO")  # Liberamos el estado del usuario
         else:
             whatsapp_utils.send_whatsapp_message(phone, f"❌ {respuesta_ia}")
-            # NOTA: Aquí puedes decidir si dejas al usuario en el estado de pago para que reintente
-            # o si prefieres resetearlo con ai_utils.set_user_state(phone, "INICIO")
+            # Si el pago falla, el usuario se queda en estado de espera para que pueda reenviar el capture correcto
+            
     except Exception as e:
-        print(f"Error en la verificación en segundo plano: {e}")
-        whatsapp_utils.send_whatsapp_message(phone, "⚠️ Ocurrió un error interno al procesar tu imagen. Por favor, reintenta.")
+        print(f"❌ Error en la verificación en segundo plano: {e}")
+        whatsapp_utils.send_whatsapp_message(phone, "⚠️ Ocurrió un error interno al procesar tu imagen de pago. Por favor, vuelve a intentarlo.")
 
 @app.get("/webhook")
 async def verificar_webhook(request: Request):
@@ -80,24 +92,31 @@ async def recibir_notificacion(request: Request, background_tasks: BackgroundTas
         estado = ai_utils.get_user_state(phone)
 
         # ==========================================
-        # CASO A: EL BOT ESTÁ ESPERANDO UN CAPTURE
+        # CASO A: EL BOT ESTÁ ESPERANDO UN CAPTURE DE PAGO
         # ==========================================
         if estado and estado.startswith("ESPERANDO_CAPTURE_"):
             if msg.get("type") == "image":
                 emoji_usado = estado.split("_")[2]
                 monto_esperado = ai_utils.obtener_monto_por_emoji(emoji_usado)
                 
+                # Extraemos el ID multimedia enviado por Meta
                 image_id = msg["image"]["id"]
-                image_url = whatsapp_utils.get_media_url(image_id)
-                image_bytes = whatsapp_utils.download_media(image_url)
                 
-                # MODIFICACIÓN CLAVE: Delegamos la verificación pesada a las tareas en segundo plano
-                # y le respondemos inmediatamente "OK" a Meta para frenar los reenvíos locos.
-                background_tasks.add_task(procesar_verificacion_pago_bg, phone, image_bytes, monto_esperado)
+                # 2. Buscamos la URL usando la función de whatsapp_utils
+                image_url = whatsapp_utils.get_media_url(image_id)
+                
+                if image_url:
+                    image_bytes = whatsapp_utils.download_media(image_url)
+                    
+                    # Delegamos la lógica pesada a la tarea asíncrona en segundo plano
+                    background_tasks.add_task(procesar_verificacion_pago_bg, phone, image_bytes, monto_esperado)
+                else:
+                    whatsapp_utils.send_whatsapp_message(phone, "❌ No se pudo descargar tu imagen desde los servidores de WhatsApp. Inténtalo de nuevo.")
+                
                 return "OK", 200
 
             else:
-                # Si envía otra cosa que no sea imagen, le recordamos el pago
+                # Si el usuario intenta escribir texto o mandar otra cosa en pleno flujo de pago, lo frenamos
                 whatsapp_utils.send_whatsapp_message(
                     phone, 
                     "⚠️ Tienes una verificación de pago pendiente.\nPor favor, envía la imagen del capture de tu Pago Móvil para continuar."
@@ -107,12 +126,14 @@ async def recibir_notificacion(request: Request, background_tasks: BackgroundTas
         # ==========================================
         # CASO B: FLUJO NORMAL (BOT LIBRE O INICIO)
         # ==========================================
+        # Reacción con Emoji (Iniciador del flujo de Pago Móvil)
         if msg.get("type") == "reaction":
             emoji = msg["reaction"].get("emoji")
             ai_utils.set_user_state(phone, f"ESPERANDO_CAPTURE_{emoji}")
             whatsapp_utils.send_whatsapp_message(phone, f"Has elegido {emoji}. Envía el capture de tu pago para verificar.")
             return "OK", 200
 
+        # Entrada de Texto Plano (Disparador de reglas automatizadas)
         if msg.get("type") == "text":
             texto_usuario = msg["text"]["body"].strip()
             respuestas_encontradas = ai_utils.buscar_todas_las_respuestas(texto_usuario)
@@ -126,6 +147,7 @@ async def recibir_notificacion(request: Request, background_tasks: BackgroundTas
                 )
             return "OK", 200
 
+        # Entrada de Audio / Nota de Voz (Transcripción)
         if msg.get("type") == "audio":
             audio_id = msg["audio"]["id"]
             audio_url = whatsapp_utils.get_media_url(audio_id)
@@ -140,6 +162,6 @@ async def recibir_notificacion(request: Request, background_tasks: BackgroundTas
             return "OK", 200
 
     except Exception as e:
-        print(f"Error procesando el webhook de Meta: {e}")
+        print(f"❌ Error procesando el webhook de Meta: {e}")
         
     return "OK", 200
