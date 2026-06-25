@@ -2,7 +2,7 @@ import os
 # Importación del nuevo SDK oficial de Google que reemplaza a google-generativeai
 from google import genai
 from google.genai import types
-from auth_utils import get_supabase  # Conector para Supabase
+from auth_utils import get_supabase  # Conector para tu base de datos Supabase
 
 def verificar_capture_con_gemini(image_bytes: bytes, monto_esperado: float):
     """
@@ -50,16 +50,20 @@ def verificar_capture_con_gemini(image_bytes: bytes, monto_esperado: float):
 
 
 # =====================================================================
-# GESTIÓN DE ESTADOS Y REGLAS EN SUPABASE
+# GESTIÓN DE ESTADOS Y REGLAS EN SUPABASE (Corregido para nuevas versiones)
 # =====================================================================
 
 def get_user_state(phone: str) -> str:
     """Obtiene el estado actual del flujo del usuario desde Supabase."""
     try:
         supabase = get_supabase()
-        res = supabase.table("estados_usuarios").select("estado").eq("telefono", phone).maybe_execute()
-        if res and res.data:
+        # CORREGIDO: Usamos .execute() de forma segura en lugar de .maybe_execute()
+        res = supabase.table("estados_usuarios").select("estado").eq("telefono", phone).execute()
+        
+        # Verificamos si la lista tiene datos antes de acceder al índice [0]
+        if res and res.data and len(res.data) > 0:
             return res.data[0].get("estado", "INICIO")
+            
         return "INICIO"
     except Exception as e:
         print(f"❌ Error obteniendo estado en ai_utils: {e}")
