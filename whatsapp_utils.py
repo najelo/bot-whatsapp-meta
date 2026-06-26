@@ -1,7 +1,6 @@
 import os
 import requests
 
-# Variables de entorno leídas consistentemente de tu entorno en Render
 ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
 VERSION = "v25.0"
@@ -46,7 +45,7 @@ def send_whatsapp_document(to, pdf_url, caption="Aquí tienes tu archivo"):
         print(f"❌ Excepción en send_whatsapp_document: {e}")
 
 # =====================================================================
-# MÉTODOS DE DESCARGA ADAPTADOS A TU WEB_SERVER.PY ORIGINAL
+# LÓGICA DE DESCARGA MULTIMEDIA COMPATIBLE
 # =====================================================================
 
 def get_media_url(media_id: str) -> str:
@@ -64,7 +63,7 @@ def get_media_url(media_id: str) -> str:
         return None
 
 def download_media(media_url: str) -> bytes:
-    """Descarga los bytes del archivo desde la URL provista por Meta."""
+    """Descarga los bytes del archivo desde la URL temporal de Meta."""
     try:
         if not media_url:
             return None
@@ -83,12 +82,11 @@ def download_media(media_url: str) -> bytes:
 
 def get_image_from_meta(media_id):
     """
-    Obtiene y descarga los bytes de la imagen de forma unificada en un solo paso
-    tal como lo invoca tu web_server.py en la línea 53.
+    Descarga completa de bytes multimedia invocada por la línea 53 de tu web_server.py.
     """
     url_temporal = get_media_url(media_id)
     if url_temporal:
         bytes_imagen = download_media(url_temporal)
         if bytes_imagen:
             return bytes_imagen
-    raise Exception("No se pudo obtener ni descargar la imagen de Meta.")
+    raise Exception("No se pudo descargar la imagen de Meta correctamente.")
