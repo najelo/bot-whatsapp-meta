@@ -9,7 +9,7 @@ from auth_utils import get_supabase
 
 # Configuración inicial de Gemini (SDK estándar)
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel('gemini-2.5-flash')
+model = genai.GenerativeModel('gemini-3.5-flash')
 
 def normalizar_texto(texto):
     """Limpia el texto quitando acentos y caracteres especiales."""
