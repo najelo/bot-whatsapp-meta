@@ -16,30 +16,28 @@ def normalizar_texto(texto):
     texto = unicodedata.normalize('NFD', texto.lower()).encode('ascii', 'ignore').decode('utf-8')
     return re.sub(r'[^a-z0-9\s]', '', texto).strip()
 
-def obtener_montos_verificacion():
+def obtener_monto_por_emoji(emoji):
     """
-    Recupera los montos actualizados desde la base de datos de Supabase.
-    Retorna un diccionario con los valores por defecto si la base de datos falla.
+    Busca dinámicamente el monto asignado a un emoji en Supabase.
+    Si la base de datos falla o no encuentra el emoji, usa valores de respaldo.
     """
-    # Valores por defecto por si acaso falla la conexión
-    montos_por_defecto = {
-        "💖": 3300.0,
-        "⭐": 20.0,
-        "💎": 10.0
-    }
+    # Valores por defecto por si acaso falla la conexión o la tabla está vacía
+    valores_respaldo = {"💖": 3300.0, "⭐": 20.0, "💎": 10.0}
     
     try:
         supabase = get_supabase()
-        query = supabase.table("montos_emojis").select("*").execute()
+        # Buscamos el registro que coincida exactamente con el emoji
+        query = supabase.table("montos_emojis").select("monto").eq("emoji", emoji).execute()
         
         if query.data:
-            # Transformamos la lista de la BD en un diccionario {'💖': 3300.0, ...}
-            return {item['emoji']: float(item['monto']) for item in query.data}
+            # Retornamos el monto convertido a float
+            return float(query.data[0]['monto'])
             
-    except Exception as e:
-        print(f"⚠️ Error leyendo montos de Supabase: {e}. Usando valores por defecto.")
+    except Exception as e: 
+        print(f"❌ Error leyendo montos_emojis de Supabase: {e}. Usando respaldo.")
         
-    return montos_por_defecto
+    # Si no se encontró en la BD o hubo un error, usamos el valor por defecto
+    return valores_respaldo.get(emoji, 0.0)
 
 def buscar_todas_las_respuestas(texto_usuario: str) -> list:
     """
