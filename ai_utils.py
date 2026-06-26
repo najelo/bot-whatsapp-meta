@@ -1,91 +1,121 @@
 import os
-from google import genai
-from google.genai import types
+import io
+import time
+import PIL.Image
+import unicodedata
+import re
+import google.generativeai as genai
 from auth_utils import get_supabase
 
-def verificar_capture_con_gemini(image_bytes: bytes, monto_esperado: float):
-    """Verifica un capture usando el nuevo SDK 'google-genai'."""
-    try:
-        client = genai.Client()
-        imagen_ia = types.Part.from_bytes(
-            data=image_bytes,
-            mime_type="image/jpeg"
-        )
-        
-        prompt = f"""
-        Analiza detalladamente esta imagen de un capture de transferencia o Pago Móvil.
-        Determina si la transacción es válida y exitosa.
-        El monto exacto que debes buscar, confirmar y validar es: {monto_esperado}
-        
-        Responde ESTRICTAMENTE en el siguiente formato:
-        EXITO: True (o False si el monto no coincide, está borroso o es una transacción rechazada/pendiente)
-        MENSAJE: Un resumen corto en español de lo verificado.
-        """
-        
-        response = client.models.generate_content(
-            model='gemini-3.5-flash',
-            contents=[imagen_ia, prompt]
-        )
-        
-        texto_ia = response.text
-        print(f"🤖 Respuesta cruda de Gemini: {texto_ia}")
-        
-        if "EXITO: True" in texto_ia:
-            return True, texto_ia
-        else:
-            return False, texto_ia
-            
-    except Exception as e:
-        print(f"❌ Error en ai_utils usando el nuevo SDK de Gemini: {e}")
-        return False, f"Error al verificar con el motor de IA: {str(e)}"
+# Configuración inicial de Gemini (SDK estándar)
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+model = genai.GenerativeModel('gemini-2.5-flash')
 
-def get_user_state(phone: str) -> str:
-    """Obtiene el estado actual usando la columna 'phone'."""
+def normalizar_texto(texto):
+    """Limpia el texto quitando acentos y caracteres especiales."""
+    texto = unicodedata.normalize('NFD', texto.lower()).encode('ascii', 'ignore').decode('utf-8')
+    return re.sub(r'[^a-z0-9\s]', '', texto).strip()
+
+def obtener_monto_por_emoji(emoji):
+    """Tus montos y emojis originales de negocio."""
+    mapeo = {"💖": 3300.0, "⭐": 20.0, "💎": 10.0}
+    return mapeo.get(emoji, 0.0)
+
+def buscar_todas_las_respuestas(texto_usuario):
+    """Busca en Supabase las respuestas automatizadas por palabras clave."""
+    texto_limpio = normalizar_texto(texto_usuario)
+    lista_respuestas = []
+    try:
+        supabase = get_supabase()
+        reglas = supabase.table("clientes").select("palabra_clave, respuesta_id").execute().data
+        for r in reglas:
+            if normalizar_texto(r['palabra_clave']) in texto_limpio:
+                resp = supabase.table("respuestas").select("contenido").eq("id", r['respuesta_id']).execute().data
+                if resp: 
+                    lista_respuestas.append(resp[0]['contenido'])
+    except Exception as e: 
+        print(f"❌ Error BD en buscar_todas_las_respuestas: {e}")
+    return lista_respuestas
+
+def buscar_respuesta_unica(texto_usuario):
+    """Busca una coincidencia directa o devuelve la primera disponible."""
+    respuestas = buscar_todas_las_respuestas(texto_usuario)
+    return respuestas[0] if respuestas else None
+
+def generar_respuesta_ia(texto_usuario):
+    """Genera respuestas conversacionales cuando el texto no coincide con palabras clave."""
+    try:
+        prompt = f"Eres un asistente de atención al cliente automatizado. Responde de forma amable y concisa a: {texto_usuario}"
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"Hola. Reacciona con un emoji a nuestros mensajes para iniciar el proceso de verificación de pago."
+
+def verificar_pago_movil(img_bytes, cedula, telefono, monto_minimo):
+    """
+    Verifica el capture de Pago Móvil con reintentos inteligentes 
+    para absorber errores de saturación 503 de los servidores de Google.
+    """
+    intentos_maximos = 3
+    espera = 2  # Segundos iniciales de pausa antes del reintento
+
+    for intento in range(intentos_maximos):
+        try:
+            img = PIL.Image.open(io.BytesIO(img_bytes))
+            prompt = (f"Auditor de pagos estricto. Datos esperados en el recibo: Cédula {cedula}, Teléfono {telefono}. "
+                      f"Monto exacto exigido: {monto_minimo}. Analiza detenidamente la imagen: "
+                      "¿Coinciden los datos clave y el monto de la transferencia es igual o mayor al exigido? "
+                      "Responde ÚNICAMENTE empezando con: ✅ PAGO VERIFICADO (seguido de un resumen muy breve) "
+                      "o ❌ PAGO RECHAZADO (indicando qué dato falló).")
+            
+            response = model.generate_content([prompt, img])
+            return response.text
+
+        except Exception as e:
+            # Si el error reporta alta demanda (503) y nos quedan intentos, esperamos y reintentamos
+            if "503" in str(e) and intento < intentos_maximos - 1:
+                print(f"⚠️ Servidor saturado (503). Reintentando en {espera}s... (Intento {intento + 1}/{intentos_maximos})")
+                time.sleep(espera)
+                espera *= 2  # Aumento exponencial del tiempo (2s, 4s...)
+            else:
+                print(f"❌ Error crítico final en verificar_pago_movil: {e}")
+                return f"❌ Error transitorio del sistema (Código 503). Por favor, intenta enviar tu capture nuevamente en unos instantes."
+
+def obtener_datos_verificacion():
+    """Obtiene los datos del receptor activo desde la configuración de pago."""
+    try:
+        supabase = get_supabase()
+        res = supabase.table("configuracion_pago").select("*").eq("activo", True).execute()
+        return res.data[0] if res.data else {"cedula_esperada": "0", "telefono_esperado": "0"}
+    except Exception as e:
+        print(f"❌ Error al obtener datos de verificación: {e}")
+        return {"cedula_esperada": "0", "telefono_esperado": "0"}
+
+def set_user_state(phone, state):
+    """Registra o actualiza el estado de la conversación del cliente."""
+    try:
+        supabase = get_supabase()
+        supabase.table("estados_usuario").upsert({"phone": phone, "estado": state}).execute()
+    except Exception as e:
+        print(f"❌ Error en set_user_state: {e}")
+
+def get_user_state(phone):
+    """Consulta el estado actual en el que se encuentra el cliente."""
     try:
         supabase = get_supabase()
         res = supabase.table("estados_usuario").select("estado").eq("phone", phone).execute()
-        if res and res.data and len(res.data) > 0:
-            return res.data[0].get("estado", "INICIO")
-        return "INICIO"
+        return res.data[0]['estado'] if res.data else "IDLE"
     except Exception as e:
-        print(f"❌ Error obteniendo estado en ai_utils: {e}")
-        return "INICIO"
+        print(f"❌ Error en get_user_state: {e}")
+        return "IDLE"
 
-def set_user_state(phone: str, nuevo_estado: str):
-    """Guarda o actualiza el estado usando la columna 'phone'."""
+def save_to_db(phone, response, text=None, url_path=None):
+    """Guarda el log del mensaje procesado en el historial."""
     try:
         supabase = get_supabase()
-        supabase.table("estados_usuario").upsert({"phone": phone, "estado": nuevo_estado}).execute()
+        data = {"phone": phone, "respuesta": response}
+        if text: data["texto_usuario"] = text
+        if url_path: data["url_imagen"] = url_path
+        supabase.table("historial_mensajes").insert(data).execute()
     except Exception as e:
-        print(f"❌ Error guardando estado en ai_utils: {e}")
-
-def obtener_monto_por_emoji(emoji: str) -> float:
-    """Mapea el emoji seleccionado por el usuario con el precio."""
-    mapa_precios = {
-        "💖": 150.00,
-        "💸": 200.00,
-        "🔥": 350.00,
-        "💳": 500.00
-    }
-    return mapa_precios.get(emoji, 0.00)
-
-def buscar_todas_las_respuestas(texto_usuario: str) -> list:
-    """Busca respuestas automatizadas por palabras clave."""
-    try:
-        supabase = get_supabase()
-        texto_limpio = texto_usuario.lower().strip()
-        res = supabase.table("clientes").select("id, palabra_clave, respuestas(id, contenido, tipo_contenido)").execute()
-        
-        respuestas_encontradas = []
-        if res and res.data:
-            for regla in res.data:
-                palabra_regla = regla.get("palabra_clave", "").lower().strip()
-                if palabra_regla in texto_limpio and regla.get("respuestas"):
-                    respuestas_encontradas.append(regla["respuestas"])
-        return respuestas_encontradas
-    except Exception as e:
-        print(f"❌ Error buscando respuestas: {e}")
-        return []
-
-def transcribir_audio_con_whisper(audio_bytes: bytes) -> str:
-    return ""
+        print(f"❌ Error guardando historial: {e}")
