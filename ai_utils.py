@@ -5,11 +5,14 @@ import PIL.Image
 import unicodedata
 import re
 import google.generativeai as genai
-from auth_utils import get_supabase
+from supabase import create_client
 
-# Configuración inicial de Gemini (SDK estándar)
+# Configuración de Gemini (SDK estándar compatible con tus dependencias)
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel('gemini-3.5-flash')
+model = genai.GenerativeModel('gemini-2.5-flash')
+
+# Inicialización directa de Supabase
+supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
 
 def normalizar_texto(texto):
     """Limpia el texto quitando acentos y caracteres especiales."""
@@ -26,7 +29,6 @@ def buscar_todas_las_respuestas(texto_usuario):
     texto_limpio = normalizar_texto(texto_usuario)
     lista_respuestas = []
     try:
-        supabase = get_supabase()
         reglas = supabase.table("clientes").select("palabra_clave, respuesta_id").execute().data
         for r in reglas:
             if normalizar_texto(r['palabra_clave']) in texto_limpio:
@@ -49,7 +51,7 @@ def generar_respuesta_ia(texto_usuario):
         response = model.generate_content(prompt)
         return response.text
     except Exception as e:
-        return f"Hola. Reacciona con un emoji a nuestros mensajes para iniciar el proceso de verificación de pago."
+        return "Hola. Reacciona con un emoji a nuestros mensajes para iniciar el proceso de verificación de pago."
 
 def verificar_pago_movil(img_bytes, cedula, telefono, monto_minimo):
     """
@@ -79,12 +81,29 @@ def verificar_pago_movil(img_bytes, cedula, telefono, monto_minimo):
                 espera *= 2  # Aumento exponencial del tiempo (2s, 4s...)
             else:
                 print(f"❌ Error crítico final en verificar_pago_movil: {e}")
-                return f"❌ Error transitorio del sistema (Código 503). Por favor, intenta enviar tu capture nuevamente en unos instantes."
+                return "❌ Error transitorio del sistema (Código 503). Por favor, intenta enviar tu capture nuevamente en unos instantes."
+
+def verificar_capture_con_gemini(image_bytes: bytes, monto_esperado: float):
+    """
+    Función puente/alias para mantener compatibilidad con las llamadas 
+    en segundo plano (background tasks) que pueda invocar tu web_server.py.
+    """
+    cfg = obtener_datos_verificacion()
+    resultado_texto = verificar_pago_movil(
+        img_bytes=image_bytes, 
+        cedula=cfg['cedula_esperada'], 
+        telefono=cfg['telefono_esperado'], 
+        monto_minimo=monto_esperado
+    )
+    
+    if "✅ PAGO VERIFICADO" in resultado_texto:
+        return True, resultado_texto
+    else:
+        return False, resultado_texto
 
 def obtener_datos_verificacion():
     """Obtiene los datos del receptor activo desde la configuración de pago."""
     try:
-        supabase = get_supabase()
         res = supabase.table("configuracion_pago").select("*").eq("activo", True).execute()
         return res.data[0] if res.data else {"cedula_esperada": "0", "telefono_esperado": "0"}
     except Exception as e:
@@ -94,7 +113,6 @@ def obtener_datos_verificacion():
 def set_user_state(phone, state):
     """Registra o actualiza el estado de la conversación del cliente."""
     try:
-        supabase = get_supabase()
         supabase.table("estados_usuario").upsert({"phone": phone, "estado": state}).execute()
     except Exception as e:
         print(f"❌ Error en set_user_state: {e}")
@@ -102,7 +120,6 @@ def set_user_state(phone, state):
 def get_user_state(phone):
     """Consulta el estado actual en el que se encuentra el cliente."""
     try:
-        supabase = get_supabase()
         res = supabase.table("estados_usuario").select("estado").eq("phone", phone).execute()
         return res.data[0]['estado'] if res.data else "IDLE"
     except Exception as e:
@@ -112,7 +129,6 @@ def get_user_state(phone):
 def save_to_db(phone, response, text=None, url_path=None):
     """Guarda el log del mensaje procesado en el historial."""
     try:
-        supabase = get_supabase()
         data = {"phone": phone, "respuesta": response}
         if text: data["texto_usuario"] = text
         if url_path: data["url_imagen"] = url_path
