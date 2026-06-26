@@ -5,44 +5,52 @@ import PIL.Image
 import unicodedata
 import re
 import google.generativeai as genai
-from supabase import create_client
+from auth_utils import get_supabase
 
 # Configuración de Gemini (SDK estándar compatible con tus dependencias)
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 model = genai.GenerativeModel('gemini-2.5-flash')
-
-# Inicialización directa de Supabase
-supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
 
 def normalizar_texto(texto):
     """Limpia el texto quitando acentos y caracteres especiales."""
     texto = unicodedata.normalize('NFD', texto.lower()).encode('ascii', 'ignore').decode('utf-8')
     return re.sub(r'[^a-z0-9\s]', '', texto).strip()
 
-def obtener_monto_por_emoji(emoji):
-    """Tus montos y emojis originales de negocio."""
-    mapeo = {"💖": 3300.0, "⭐": 20.0, "💎": 10.0}
-    return mapeo.get(emoji, 0.0)
+def obtener_monto_por_emoji(emoji: str) -> float:
+    """Mapea el emoji seleccionado por el usuario con el precio original de negocio."""
+    mapa_precios = {
+        "💖": 3300.0,
+        "⭐": 20.0,
+        "💎": 10.0
+    }
+    return mapa_precios.get(emoji, 0.00)
 
-def buscar_todas_las_respuestas(texto_usuario):
-    """Busca en Supabase las respuestas automatizadas por palabras clave."""
-    texto_limpio = normalizar_texto(texto_usuario)
-    lista_respuestas = []
+def buscar_todas_las_respuestas(texto_usuario: str) -> list:
+    """
+    Busca respuestas automatizadas por palabras clave en Supabase.
+    Mantiene intacta tu estructura original de joins para extraer contenido y tipo_contenido (PDF/multimedia).
+    """
     try:
-        reglas = supabase.table("clientes").select("palabra_clave, respuesta_id").execute().data
-        for r in reglas:
-            if normalizar_texto(r['palabra_clave']) in texto_limpio:
-                resp = supabase.table("respuestas").select("contenido").eq("id", r['respuesta_id']).execute().data
-                if resp: 
-                    lista_respuestas.append(resp[0]['contenido'])
-    except Exception as e: 
-        print(f"❌ Error BD en buscar_todas_las_respuestas: {e}")
-    return lista_respuestas
-
-def buscar_respuesta_unica(texto_usuario):
-    """Busca una coincidencia directa o devuelve la primera disponible."""
-    respuestas = buscar_todas_las_respuestas(texto_usuario)
-    return respuestas[0] if respuestas else None
+        supabase = get_supabase()
+        texto_limpio = texto_usuario.lower().strip()
+        # Tu query exacta con la relación de la tabla respuestas
+        res = supabase.table("clientes").select("id, palabra_clave, respuestas(id, contenido, tipo_contenido)").execute()
+        
+        respuestas_encontradas = []
+        if res and res.data:
+            for regla in res.data:
+                palabra_regla = regla.get("palabra_clave", "").lower().strip()
+                if palabra_regla in texto_limpio:
+                    datos_respuesta = regla.get("respuestas")
+                    if datos_respuesta:
+                        respuestas_encontradas.append({
+                            "contenido": datos_respuesta.get("contenido"),
+                            "tipo_contenido": datos_respuesta.get("tipo_contenido", "texto")
+                        })
+        return respuestas_encontradas
+    except Exception as e:
+        print(f"❌ Error buscando respuestas en ai_utils: {e}")
+        return []
 
 def generar_respuesta_ia(texto_usuario):
     """Genera respuestas conversacionales cuando el texto no coincide con palabras clave."""
@@ -74,11 +82,10 @@ def verificar_pago_movil(img_bytes, cedula, telefono, monto_minimo):
             return response.text
 
         except Exception as e:
-            # Si el error reporta alta demanda (503) y nos quedan intentos, esperamos y reintentamos
             if "503" in str(e) and intento < intentos_maximos - 1:
                 print(f"⚠️ Servidor saturado (503). Reintentando en {espera}s... (Intento {intento + 1}/{intentos_maximos})")
                 time.sleep(espera)
-                espera *= 2  # Aumento exponencial del tiempo (2s, 4s...)
+                espera *= 2  # Aumento exponencial del tiempo
             else:
                 print(f"❌ Error crítico final en verificar_pago_movil: {e}")
                 return "❌ Error transitorio del sistema (Código 503). Por favor, intenta enviar tu capture nuevamente en unos instantes."
@@ -86,7 +93,7 @@ def verificar_pago_movil(img_bytes, cedula, telefono, monto_minimo):
 def verificar_capture_con_gemini(image_bytes: bytes, monto_esperado: float):
     """
     Función puente/alias para mantener compatibilidad con las llamadas 
-    en segundo plano (background tasks) que pueda invocar tu web_server.py.
+    en segundo plano (background tasks) que invoca tu web_server.py.
     """
     cfg = obtener_datos_verificacion()
     resultado_texto = verificar_pago_movil(
@@ -104,31 +111,35 @@ def verificar_capture_con_gemini(image_bytes: bytes, monto_esperado: float):
 def obtener_datos_verificacion():
     """Obtiene los datos del receptor activo desde la configuración de pago."""
     try:
+        supabase = get_supabase()
         res = supabase.table("configuracion_pago").select("*").eq("activo", True).execute()
         return res.data[0] if res.data else {"cedula_esperada": "0", "telefono_esperado": "0"}
     except Exception as e:
         print(f"❌ Error al obtener datos de verificación: {e}")
         return {"cedula_esperada": "0", "telefono_esperado": "0"}
 
-def set_user_state(phone, state):
-    """Registra o actualiza el estado de la conversación del cliente."""
+def set_user_state(phone: str, nuevo_estado: str):
+    """Guarda o actualiza el estado usando la columna 'phone'."""
     try:
-        supabase.table("estados_usuario").upsert({"phone": phone, "estado": state}).execute()
+        supabase = get_supabase()
+        supabase.table("estados_usuario").upsert({"phone": phone, "estado": nuevo_estado}).execute()
     except Exception as e:
-        print(f"❌ Error en set_user_state: {e}")
+        print(f"❌ Error guardando estado en ai_utils: {e}")
 
-def get_user_state(phone):
-    """Consulta el estado actual en el que se encuentra el cliente."""
+def get_user_state(phone: str) -> str:
+    """Consulta el estado actual de la conversación de un usuario."""
     try:
+        supabase = get_supabase()
         res = supabase.table("estados_usuario").select("estado").eq("phone", phone).execute()
-        return res.data[0]['estado'] if res.data else "IDLE"
+        return res.data[0]["estado"] if res and res.data else "IDLE"
     except Exception as e:
-        print(f"❌ Error en get_user_state: {e}")
+        print(f"❌ Error obteniendo estado en ai_utils: {e}")
         return "IDLE"
 
 def save_to_db(phone, response, text=None, url_path=None):
     """Guarda el log del mensaje procesado en el historial."""
     try:
+        supabase = get_supabase()
         data = {"phone": phone, "respuesta": response}
         if text: data["texto_usuario"] = text
         if url_path: data["url_imagen"] = url_path
