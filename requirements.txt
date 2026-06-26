@@ -1,8 +1,7 @@
 fastapi
 uvicorn
-google-genai
+google-generativeai
 requests
 python-dotenv
 supabase
 Pillow
-supabase>=2.0.0
