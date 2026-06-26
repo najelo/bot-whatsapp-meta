@@ -1,7 +1,7 @@
 import os
 import requests
 
-# Variables de entorno leídas de Render
+# Variables de entorno leídas desde Render
 ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
 VERSION = "v25.0"
@@ -46,7 +46,7 @@ def send_whatsapp_document(to, pdf_url, caption="Aquí tienes tu archivo"):
         print(f"❌ Excepción en send_whatsapp_document: {e}")
 
 # =====================================================================
-# LÓGICA DE DESCARGA MULTIMEDIA COMPATIBLE
+# LÓGICA DE DESCARGA MULTIMEDIA COMPATIBLE CON TU WEB_SERVER.PY
 # =====================================================================
 
 def get_media_url(media_id: str) -> str:
@@ -83,7 +83,7 @@ def download_media(media_url: str) -> bytes:
 
 def get_image_from_meta(media_id):
     """
-    Descarga completa de bytes multimedia invocada por tu web_server.py.
+    Descarga completa de bytes multimedia invocada por la línea 53 de tu web_server.py.
     """
     url_temporal = get_media_url(media_id)
     if url_temporal:
