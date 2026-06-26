@@ -16,14 +16,30 @@ def normalizar_texto(texto):
     texto = unicodedata.normalize('NFD', texto.lower()).encode('ascii', 'ignore').decode('utf-8')
     return re.sub(r'[^a-z0-9\s]', '', texto).strip()
 
-def obtener_monto_por_emoji(emoji: str) -> float:
-    """Mapea el emoji seleccionado por el usuario con el precio original de negocio."""
-    mapa_precios = {
+def obtener_montos_verificacion():
+    """
+    Recupera los montos actualizados desde la base de datos de Supabase.
+    Retorna un diccionario con los valores por defecto si la base de datos falla.
+    """
+    # Valores por defecto por si acaso falla la conexión
+    montos_por_defecto = {
         "💖": 3300.0,
         "⭐": 20.0,
         "💎": 10.0
     }
-    return mapa_precios.get(emoji, 0.00)
+    
+    try:
+        supabase = get_supabase()
+        query = supabase.table("montos_emojis").select("*").execute()
+        
+        if query.data:
+            # Transformamos la lista de la BD en un diccionario {'💖': 3300.0, ...}
+            return {item['emoji']: float(item['monto']) for item in query.data}
+            
+    except Exception as e:
+        print(f"⚠️ Error leyendo montos de Supabase: {e}. Usando valores por defecto.")
+        
+    return montos_por_defecto
 
 def buscar_todas_las_respuestas(texto_usuario: str) -> list:
     """
