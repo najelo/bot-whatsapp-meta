@@ -34,6 +34,25 @@ def enviar_respuestas_secuenciales(phone: str, respuestas_lista: list):
             whatsapp_utils.send_whatsapp_audio(phone, contenido)
             
         time.sleep(1.5)
+        def registrar_log_transaccion(supabase, telefono, monto, estado):
+    """
+    Inserta el resultado del procesamiento del capture en Supabase
+    para que se refleje en el Panel de Control en tiempo real.
+    
+    :param telefono: str (Ej: '584121234567')
+    :param monto: float o int (Ej: 3300.0)
+    :param estado: str ('aprobado', 'alerta' o 'error')
+    """
+    try:
+        data = {
+            "phone": str(telefono),
+            "monto": float(monto),
+            "estado": str(estado).lower() # Siempre guardarlo en minúsculas
+        }
+        # Hacemos el insert en la nueva tabla
+        supabase.table("historial_pagos").insert(data).execute()
+    except Exception as e:
+        print(f"Error al guardar log en el bot: {e}")
 
 def procesar_verificacion_pago_bg(phone: str, image_bytes: bytes, monto_esperado: float):
     """
