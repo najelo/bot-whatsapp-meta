@@ -45,6 +45,46 @@ def send_whatsapp_document(to, pdf_url, caption="Aquí tienes tu archivo"):
     except Exception as e:
         print(f"❌ Excepción en send_whatsapp_document: {e}")
 
+def send_whatsapp_image(to, image_url):
+    """Envía una imagen por URL requerida para las respuestas multimedia de tu base de datos."""
+    try:
+        url = f"https://graph.facebook.com/{VERSION}/{PHONE_NUMBER_ID}/messages"
+        headers = {
+            "Authorization": f"Bearer {ACCESS_TOKEN}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": to,
+            "type": "image",
+            "image": {"link": image_url}
+        }
+        response = requests.post(url, headers=headers, json=payload)
+        if response.status_code != 200:
+            print(f"❌ Error enviando imagen ({response.status_code}): {response.text}")
+    except Exception as e:
+        print(f"❌ Excepción en send_whatsapp_image: {e}")
+
+def send_whatsapp_audio(to, audio_url):
+    """Envía un archivo de audio por URL."""
+    try:
+        url = f"https://graph.facebook.com/{VERSION}/{PHONE_NUMBER_ID}/messages"
+        headers = {
+            "Authorization": f"Bearer {ACCESS_TOKEN}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": to,
+            "type": "audio",
+            "audio": {"link": audio_url}
+        }
+        response = requests.post(url, headers=headers, json=payload)
+        if response.status_code != 200:
+            print(f"❌ Error enviando audio ({response.status_code}): {response.text}")
+    except Exception as e:
+        print(f"❌ Excepción en send_whatsapp_audio: {e}")
+
 # =====================================================================
 # LÓGICA DE DESCARGA MULTIMEDIA COMPATIBLE CON TU WEB_SERVER.PY
 # =====================================================================
@@ -64,7 +104,7 @@ def get_media_url(media_id: str) -> str:
         return None
 
 def download_media(media_url: str) -> bytes:
-    """Descarga los bytes del archivo desde la URL temporal de Meta."""
+    """Descarga los bytes del archivo (como captures de Pago Móvil) desde Meta."""
     try:
         if not media_url:
             return None
@@ -83,7 +123,7 @@ def download_media(media_url: str) -> bytes:
 
 def get_image_from_meta(media_id):
     """
-    Descarga completa de bytes multimedia invocada por la línea 53 de tu web_server.py.
+    Descarga completa de bytes multimedia invocada por la lógica de verificación de imágenes.
     """
     url_temporal = get_media_url(media_id)
     if url_temporal:
