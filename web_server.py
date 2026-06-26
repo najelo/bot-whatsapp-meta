@@ -3,11 +3,32 @@ import time
 from fastapi import FastAPI, Request, Response, BackgroundTasks
 import ai_utils
 import whatsapp_utils
+from auth_utils import get_supabase  # Importamos tu cliente de Supabase
 
 app = FastAPI()
 
+# Inicializar Supabase para usarlo en los logs
+supabase_client = get_supabase()
+
 # Token de verificación para configurar el Webhook en el panel de Meta Developers
 WEBHOOK_VERIFY_TOKEN = os.getenv("WEBHOOK_VERIFY_TOKEN", "tu_token_secreto_aqui")
+
+
+def registrar_log_transaccion(telefono: str, monto: float, estado: str):
+    """
+    Inserta el resultado del procesamiento del capture en Supabase
+    para que se refleje en el Panel de Control en tiempo real.
+    """
+    try:
+        data = {
+            "phone": str(telefono),
+            "monto": float(monto),
+            "estado": str(estado).lower()  # Siempre en minúsculas
+        }
+        supabase_client.table("historial_pagos").insert(data).execute()
+    except Exception as e:
+        print(f"❌ Error al guardar log en Supabase desde el bot: {e}")
+
 
 def enviar_respuestas_secuenciales(phone: str, respuestas_lista: list):
     """
@@ -34,29 +55,12 @@ def enviar_respuestas_secuenciales(phone: str, respuestas_lista: list):
             whatsapp_utils.send_whatsapp_audio(phone, contenido)
             
         time.sleep(1.5)
-        def registrar_log_transaccion(supabase, telefono, monto, estado):
-    """
-    Inserta el resultado del procesamiento del capture en Supabase
-    para que se refleje en el Panel de Control en tiempo real.
-    
-    :param telefono: str (Ej: '584121234567')
-    :param monto: float o int (Ej: 3300.0)
-    :param estado: str ('aprobado', 'alerta' o 'error')
-    """
-    try:
-        data = {
-            "phone": str(telefono),
-            "monto": float(monto),
-            "estado": str(estado).lower() # Siempre guardarlo en minúsculas
-        }
-        # Hacemos el insert en la nueva tabla
-        supabase.table("historial_pagos").insert(data).execute()
-    except Exception as e:
-        print(f"Error al guardar log en el bot: {e}")
+
 
 def procesar_verificacion_pago_bg(phone: str, image_bytes: bytes, monto_esperado: float):
     """
     Procesa la imagen con Gemini en segundo plano para evitar reenvíos de Meta.
+    Guarda los estados ('aprobado', 'alerta', 'error') en Supabase.
     """
     try:
         exito, respuesta_ia = ai_utils.verificar_capture_con_gemini(image_bytes, monto_esperado)
@@ -64,12 +68,22 @@ def procesar_verificacion_pago_bg(phone: str, image_bytes: bytes, monto_esperado
         if exito:
             whatsapp_utils.send_whatsapp_message(phone, f"✅ Pago verificado con éxito:\n\n{respuesta_ia}")
             ai_utils.set_user_state(phone, "INICIO")
+            
+            # 📋 REGISTRO EXITOSO
+            registrar_log_transaccion(phone, monto_esperado, "aprobado")
         else:
             whatsapp_utils.send_whatsapp_message(phone, f"❌ {respuesta_ia}")
+            
+            # 🚨 REGISTRO DE ALERTA (Captura inválida o datos incorrectos)
+            registrar_log_transaccion(phone, monto_esperado, "alerta")
             
     except Exception as e:
         print(f"❌ Error en la verificación en segundo plano: {e}")
         whatsapp_utils.send_whatsapp_message(phone, "⚠️ Ocurrió un error interno al procesar tu imagen de pago.")
+        
+        # 🚨 REGISTRO DE FALLA / ERROR CRÍTICO DEL SISTEMA
+        registrar_log_transaccion(phone, 0.0, "error")
+
 
 @app.get("/webhook")
 async def verificar_webhook(request: Request):
@@ -82,6 +96,7 @@ async def verificar_webhook(request: Request):
         if mode == "subscribe" and token == WEBHOOK_VERIFY_TOKEN:
             return Response(content=challenge, media_type="text/plain")
     return Response(content="Forbidden", status_code=403)
+
 
 @app.post("/webhook")
 async def recibir_notificacion(request: Request, background_tasks: BackgroundTasks):
