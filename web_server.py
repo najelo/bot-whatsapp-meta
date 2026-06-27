@@ -192,4 +192,67 @@ async def recibir_notificacion(request: Request, background_tasks: BackgroundTas
             
             texto_transcrito = ai_utils.transcribir_audio_con_whisper(audio_bytes)
             if texto_transcrito:
-                respuestas_encontradas = ai_utils.buscar_todas_las_respuestas(texto_transc
+                respuestas_encontradas = ai_utils.buscar_todas_las_respuestas(texto_transcrito)
+                if respuestas_encontradas:
+                    background_tasks.add_task(enviar_respuestas_secuenciales, phone, respuestas_encontradas)
+            return "OK", 200
+
+    except Exception as e:
+        print(f"❌ Error procesando el webhook de Meta: {e}")
+        
+    return "OK", 200
+
+
+@app.post("/telegram_callback")
+async def telegram_callback(request: Request):
+    """
+    Escucha los clics de los botones 'Aceptar' o 'Rechazar' desde Telegram.
+    """
+    try:
+        body = await request.json()
+        if "callback_query" not in body:
+            return Response(content="OK", status_code=200)
+            
+        callback_query = body["callback_query"]
+        data = callback_query["data"]
+        chat_id = callback_query["message"]["chat"]["id"]
+        message_id = callback_query["message"]["message_id"]
+        
+        partes = data.split("_")
+        accion = partes[0]      # 'aprobar' o 'rechazar'
+        phone_usuario = partes[1]
+        
+        token = os.getenv("TELEGRAM_BOT_TOKEN")
+
+        if accion == "aprobar":
+            monto = float(partes[2])
+            registrar_log_transaccion(phone_usuario, monto, "aprobado")
+            ai_utils.set_user_state(phone_usuario, "INICIO")
+            
+            whatsapp_utils.send_whatsapp_message(
+                phone_usuario, 
+                f"✅ Tu pago de Bs. {monto:.2f} ha sido verificado y aprobado manualmente por un administrador. ¡Gracias!"
+            )
+            texto_editado = f"🟢 *Pago de {phone_usuario} APROBADO manualmente.*"
+            
+        elif accion == "rechazar":
+            whatsapp_utils.send_whatsapp_message(
+                phone_usuario, 
+                "❌ Tu comprobante de pago fue rechazado tras una verificación manual. Por favor, asegúrate de enviar el capture correcto."
+            )
+            texto_editado = f"🔴 *Pago de {phone_usuario} RECHAZADO manualmente.*"
+
+        # Modifica el mensaje en Telegram para quitar los botones tras responder
+        url_edit = f"https://api.telegram.org/bot{token}/editMessageCaption"
+        payload_edit = {
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "caption": texto_editado,
+            "reply_markup": {"inline_keyboard": []}
+        }
+        requests.post(url_edit, json=payload_edit)
+        
+    except Exception as e:
+        print(f"❌ Error en callback de Telegram: {e}")
+        
+    return Response(content="OK", status_code=200)
