@@ -1,5 +1,6 @@
 import os
 import time
+import requests
 from fastapi import FastAPI, Request, Response, BackgroundTasks
 import ai_utils
 import whatsapp_utils
@@ -80,11 +81,12 @@ def procesar_verificacion_pago_bg(phone: str, image_bytes: bytes, monto_esperado
             # 🚨 REGISTRO DE ALERTA (Captura inválida o datos incorrectos)
             registrar_log_transaccion(phone, monto_esperado, "alerta")
             
-            # 🔥 ENVIAR NOTIFICACIÓN AL TELÉFONO DEL ADMINISTRADOR POR TELEGRAM
+            # 🔥 SE MODIFICA AQUÍ: ENVIAR NOTIFICACIÓN INCLUYENDO LA IMAGEN BINARIA
             enviar_alerta_telegram(
                 monto=monto_esperado,
                 telefono=phone,
-                razon=f"Fallo en verificación de Capture: {respuesta_ia}"
+                razon=f"Fallo en verificación: {respuesta_ia}",
+                image_bytes=image_bytes
             )
             
     except Exception as e:
@@ -94,11 +96,12 @@ def procesar_verificacion_pago_bg(phone: str, image_bytes: bytes, monto_esperado
         # 🚨 REGISTRO DE FALLA / ERROR CRÍTICO DEL SISTEMA
         registrar_log_transaccion(phone, 0.0, "error")
         
-        # 🔥 NOTIFICAR AL ADMINISTRADOR SOBRE EL ERROR CRÍTICO
+        # 🔥 SE MODIFICA AQUÍ: ENVIAR ALERTA CON IMAGEN EN CASO DE FALLO CRÍTICO
         enviar_alerta_telegram(
             monto=0.0,
             telefono=phone,
-            razon=f"Fallo crítico interno en el servidor: {str(e)}"
+            razon=f"Fallo crítico interno en el servidor: {str(e)}",
+            image_bytes=image_bytes
         )
 
 
@@ -196,3 +199,62 @@ async def recibir_notificacion(request: Request, background_tasks: BackgroundTas
         print(f"❌ Error procesando el webhook de Meta: {e}")
         
     return "OK", 200
+
+
+@app.post("/telegram_callback")
+async def telegram_callback(request: Request):
+    """
+    🔥 NUEVA RUTA: Escucha los clics de los botones 'Aceptar' o 'Rechazar' desde Telegram.
+    Actualiza Supabase y notifica de inmediato al cliente por WhatsApp.
+    """
+    try:
+        body = await request.json()
+        if "callback_query" not in body:
+            return Response(content="OK", status_code=200)
+            
+        callback_query = body["callback_query"]
+        data = callback_query["data"]
+        chat_id = callback_query["message"]["chat"]["id"]
+        message_id = callback_query["message"]["message_id"]
+        
+        partes = data.split("_")
+        accion = partes[0]      # 'aprobar' o 'rechazar'
+        phone_usuario = partes[1]
+        
+        token = os.getenv("TELEGRAM_BOT_TOKEN")
+
+        if accion == "aprobar":
+            monto = float(partes[2])
+            # 1. Registrar aprobación manual en Supabase
+            registrar_log_transaccion(phone_usuario, monto, "aprobado")
+            ai_utils.set_user_state(phone_usuario, "INICIO")
+            
+            # 2. Notificar éxito al cliente en WhatsApp
+            whatsapp_utils.send_whatsapp_message(
+                phone_usuario, 
+                f"✅ Tu pago de Bs. {monto:.2f} ha sido verificado y aprobado manualmente por un administrador. ¡Gracias!"
+            )
+            texto_editado = f"🟢 *Pago de {phone_usuario} APROBADO manualmente.*"
+            
+        elif accion == "rechazar":
+            # Notificar rechazo definitivo al cliente en WhatsApp
+            whatsapp_utils.send_whatsapp_message(
+                phone_usuario, 
+                "❌ Tu comprobante de pago fue rechazado tras una verificación manual. Por favor, asegúrate de enviar el capture correcto."
+            )
+            texto_editado = f"🔴 *Pago de {phone_usuario} RECHAZADO manualmente.*"
+
+        # Modifica el mensaje en Telegram eliminando los botones para evitar doble ejecución
+        url_edit = f"https://api.telegram.org/bot{token}/editMessageCaption"
+        payload_edit = {
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "caption": texto_editado,
+            "reply_markup": {"inline_keyboard": []}
+        }
+        requests.post(url_edit, json=payload_edit)
+        
+    except Exception as e:
+        print(f"❌ Error en callback de Telegram: {e}")
+        
+    return Response(content="OK", status_code=200)
