@@ -1,8 +1,9 @@
 # notificaciones_utils.py
 import os
+import json  # 👈 AGREGADO: Necesario para convertir el teclado a JSON String
 import requests
 
-def enviar_alerta_telegram(monto, telefono, razon="Monto incorrecto", image_bytes=None):
+def enviar_alerta_telegram(monto, telefono, razon="Monto o comprobante sospechoso", image_bytes=None):
     """
     Envía la imagen del capture a Telegram con detalles de la alerta
     y botones interactivos para Aceptar o Rechazar el pago directamente.
@@ -22,8 +23,7 @@ def enviar_alerta_telegram(monto, telefono, razon="Monto incorrecto", image_byte
         f"👇 ¿Deseas aprobar manualmente esta transacción?"
     )
 
-    # Creamos los botones interactivos. Pasamos el teléfono y monto en el callback_data
-    # El callback_data tiene un límite de 64 bytes, así que lo hacemos compacto.
+    # Botones interactivos que viajan junto con el mensaje
     inline_keyboard = {
         "inline_keyboard": [
             [
@@ -35,24 +35,24 @@ def enviar_alerta_telegram(monto, telefono, razon="Monto incorrecto", image_byte
 
     try:
         if image_bytes:
-            # Si hay imagen, la enviamos usando sendPhoto
+            # Enviar con la fotografía adjunta usando sendPhoto
             url = f"https://api.telegram.org/bot{token}/sendPhoto"
             files = {"photo": ("capture.jpg", image_bytes, "image/jpeg")}
             payload = {
                 "chat_id": chat_id,
                 "caption": mensaje,
                 "parse_mode": "Markdown",
-                "reply_markup": inline_keyboard
+                "reply_markup": json.dumps(inline_keyboard)  # 👈 CORREGIDO: Convertido a string JSON
             }
             response = requests.post(url, data=payload, files=files, timeout=10)
         else:
-            # Callback de respaldo por si no llegan bytes
+            # Respaldo en texto plano si no se reciben bytes por algún fallo de red
             url = f"https://api.telegram.org/bot{token}/sendMessage"
             payload = {
                 "chat_id": chat_id,
                 "text": mensaje,
                 "parse_mode": "Markdown",
-                "reply_markup": inline_keyboard
+                "reply_markup": inline_keyboard  # En sendMessage mediante json=payload va bien como dict
             }
             response = requests.post(url, json=payload, timeout=5)
 
