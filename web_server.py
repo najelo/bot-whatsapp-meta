@@ -204,8 +204,7 @@ async def recibir_notificacion(request: Request, background_tasks: BackgroundTas
 @app.post("/telegram_callback")
 async def telegram_callback(request: Request):
     """
-    🔥 NUEVA RUTA: Escucha los clics de los botones 'Aceptar' o 'Rechazar' desde Telegram.
-    Actualiza Supabase y notifica de inmediato al cliente por WhatsApp.
+    Escucha los clics de los botones 'Aceptar' o 'Rechazar' desde Telegram.
     """
     try:
         body = await request.json()
@@ -225,11 +224,9 @@ async def telegram_callback(request: Request):
 
         if accion == "aprobar":
             monto = float(partes[2])
-            # 1. Registrar aprobación manual en Supabase
             registrar_log_transaccion(phone_usuario, monto, "aprobado")
             ai_utils.set_user_state(phone_usuario, "INICIO")
             
-            # 2. Notificar éxito al cliente en WhatsApp
             whatsapp_utils.send_whatsapp_message(
                 phone_usuario, 
                 f"✅ Tu pago de Bs. {monto:.2f} ha sido verificado y aprobado manualmente por un administrador. ¡Gracias!"
@@ -237,14 +234,13 @@ async def telegram_callback(request: Request):
             texto_editado = f"🟢 *Pago de {phone_usuario} APROBADO manualmente.*"
             
         elif accion == "rechazar":
-            # Notificar rechazo definitivo al cliente en WhatsApp
             whatsapp_utils.send_whatsapp_message(
                 phone_usuario, 
                 "❌ Tu comprobante de pago fue rechazado tras una verificación manual. Por favor, asegúrate de enviar el capture correcto."
             )
             texto_editado = f"🔴 *Pago de {phone_usuario} RECHAZADO manualmente.*"
 
-        # Modifica el mensaje en Telegram eliminando los botones para evitar doble ejecución
+        # Modifica el mensaje en Telegram para quitar los botones tras responder
         url_edit = f"https://api.telegram.org/bot{token}/editMessageCaption"
         payload_edit = {
             "chat_id": chat_id,
@@ -257,4 +253,5 @@ async def telegram_callback(request: Request):
     except Exception as e:
         print(f"❌ Error en callback de Telegram: {e}")
         
+    return Response(content="OK", status_code=200)
     return Response(content="OK", status_code=200)
