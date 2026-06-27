@@ -5,6 +5,9 @@ import ai_utils
 import whatsapp_utils
 from auth_utils import get_supabase  # Importamos tu cliente de Supabase
 
+# 🔥 IMPORTACIÓN DE LA UTILIDAD DE TELEGRAM
+from notificaciones_utils import enviar_alerta_telegram
+
 app = FastAPI()
 
 # Inicializar Supabase para usarlo en los logs
@@ -77,12 +80,26 @@ def procesar_verificacion_pago_bg(phone: str, image_bytes: bytes, monto_esperado
             # 🚨 REGISTRO DE ALERTA (Captura inválida o datos incorrectos)
             registrar_log_transaccion(phone, monto_esperado, "alerta")
             
+            # 🔥 ENVIAR NOTIFICACIÓN AL TELÉFONO DEL ADMINISTRADOR POR TELEGRAM
+            enviar_alerta_telegram(
+                monto=monto_esperado,
+                telefono=phone,
+                razon=f"Fallo en verificación de Capture: {respuesta_ia}"
+            )
+            
     except Exception as e:
         print(f"❌ Error en la verificación en segundo plano: {e}")
         whatsapp_utils.send_whatsapp_message(phone, "⚠️ Ocurrió un error interno al procesar tu imagen de pago.")
         
         # 🚨 REGISTRO DE FALLA / ERROR CRÍTICO DEL SISTEMA
         registrar_log_transaccion(phone, 0.0, "error")
+        
+        # 🔥 NOTIFICAR AL ADMINISTRADOR SOBRE EL ERROR CRÍTICO
+        enviar_alerta_telegram(
+            monto=0.0,
+            telefono=phone,
+            razon=f"Fallo crítico interno en el servidor: {str(e)}"
+        )
 
 
 @app.get("/webhook")
